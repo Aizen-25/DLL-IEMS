@@ -1,0 +1,147 @@
+<div class="form-card">
+  <h1>Edit Equipment</h1>
+  <form action="/equipments/<%= @equipment.id %>" method="post">
+    <input type="hidden" name="_method" value="put">
+    <div class="form-grid">
+      <div>
+        <div class="field">
+          <label class="required">Name</label>
+          <input type="text" name="equipment[name]" value="<%= @equipment.name %>" required autofocus>
+        </div>
+
+        <div class="field">
+          <label class="required">Serial Number</label>
+          <input type="text" name="equipment[serial_number]" value="<%= @equipment.serial_number %>" required>
+        </div>
+
+        <div class="field">
+          <label>Model</label>
+          <input type="text" name="equipment[model]" value="<%= @equipment.model %>">
+        </div>
+
+        <div class="field">
+          <label>Brand</label>
+          <input type="text" name="equipment[brand]" value="<%= @equipment.brand %>">
+        </div>
+
+        <div class="field">
+          <label>Vendor</label>
+          <input type="text" name="equipment[vendor]" value="<%= @equipment.vendor %>">
+        </div>
+
+        <div class="field">
+          <label>Category</label>
+          <select name="equipment[category]" id="category_select">
+            <option value="">-- Select category --</option>
+            <% if defined?(@categories) && @categories.any? %>
+              <% @categories.each do |c| %>
+                <option value="<%= c %>" <%= 'selected' if @equipment.category == c %>><%= c %></option>
+              <% end %>
+            <% end %>
+            <option value="other">Other...</option>
+          </select>
+          <input type="text" name="equipment[category_other]" id="category_other" placeholder="Type new category" style="display:none;margin-top:8px">
+        </div>
+      </div>
+
+      <div>
+        <div class="field">
+          <label>Location</label>
+          <select name="equipment[location]" id="location_select">
+            <option value="">-- Select location --</option>
+            <% if defined?(@locations) && @locations.any? %>
+              <% @locations.each do |l| %>
+                <option value="<%= l %>" <%= 'selected' if @equipment.location == l %>><%= l %></option>
+              <% end %>
+            <% end %>
+            <option value="other">Other...</option>
+          </select>
+          <input type="text" name="equipment[location_other]" id="location_other" placeholder="Type new location" style="display:none;margin-top:8px">
+        </div>
+
+        <div class="field">
+          <label>Purchase Date</label>
+          <input type="date" name="equipment[purchase_date]" value="<%= @equipment.purchase_date %>">
+        </div>
+
+        <div class="field">
+          <label>Warranty Until</label>
+          <input type="date" name="equipment[warranty_until]" value="<%= @equipment.warranty_until %>">
+        </div>
+
+        <div class="field">
+          <label>Status</label>
+          <select name="equipment[status]" id="status_select">
+            <% if defined?(@statuses) && @statuses.any? %>
+              <% @statuses.each do |s| %>
+                <option value="<%= s %>" <%= 'selected' if @equipment.status == s %>><%= s %></option>
+              <% end %>
+            <% end %>
+            <option value="available" <%= 'selected' if @equipment.status == 'available' %>>available</option>
+            <option value="deployed" <%= 'selected' if @equipment.status == 'deployed' %>>deployed</option>
+            <option value="maintenance" <%= 'selected' if @equipment.status == 'maintenance' %>>maintenance</option>
+            <option value="retired" <%= 'selected' if @equipment.status == 'retired' %>>retired</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="required">Unit Price (₱)</label>
+          <div class="input-group">
+            <span class="input-prefix">₱</span>
+            <input type="number" step="0.01" name="equipment[purchase_price]" id="unit_price_edit" value="<%= @equipment.purchase_price %>" min="0">
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="required">Quantity</label>
+          <input class="stepper" id="qty_input_edit" type="number" name="equipment[quantity]" value="<%= @equipment.quantity || 0 %>" min="0">
+        </div>
+
+        <div class="field">
+          <label>Total Price (₱)</label>
+          <input type="text" id="total_price_edit" readonly style="background:transparent;border:none;color:#d9ffd8;font-weight:600" value="">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="field">
+        <label>Notes</label>
+        <textarea name="equipment[notes]"><%= @equipment.notes %></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-primary" type="submit">Update</button>
+        <a class="btn-secondary" href="/equipments/<%= @equipment.id %>">Cancel</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    function toggleOther(selectId, otherId){
+      var sel = document.getElementById(selectId);
+      var other = document.getElementById(otherId);
+      if(!sel || !other) return;
+      sel.addEventListener('change', function(){
+        other.style.display = (sel.value === 'other') ? 'block' : 'none';
+      });
+      // if current value is 'other' show input (rare)
+      if(sel.value === 'other') other.style.display = 'block';
+    }
+    toggleOther('category_select','category_other');
+    toggleOther('location_select','location_other');
+    // compute total price for edit form
+    var p = document.getElementById('unit_price_edit');
+    var q = document.getElementById('qty_input_edit');
+    var t = document.getElementById('total_price_edit');
+    function computeEdit(){
+      if(!p||!q||!t) return;
+      var pv = parseFloat(p.value || 0);
+      var qv = parseInt(q.value || 0);
+      t.value = '₱ ' + (pv * qv).toFixed(2);
+    }
+    if(p && q) { p.addEventListener('input', computeEdit); q.addEventListener('input', computeEdit); computeEdit(); }
+  });
+</script>

@@ -1,0 +1,403 @@
+<div class="form-card">
+  <h1>Deploy Equipment</h1>
+  <form action="/deploy" method="post">
+    <div class="field">
+      <label class="required">Category (only categories with stock)</label>
+      <select id="deploy_category" name="category">
+        <option value="">-- Select category --</option>
+        <% if defined?(@categories) && @categories.any? %>
+          <% @categories.each do |c| %>
+            <option value="<%= c %>"><%= c %></option>
+          <% end %>
+        <% end %>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="required">Equipment (choose item)</label>
+      <select id="deploy_equipment" name="equipment_id">
+        <option value="">-- Select equipment --</option>
+        <% @equipments.each do |e| %>
+          <option data-category="<%= e.category %>" value="<%= e.id %>" data-qty="<%= e.quantity || 0 %>" data-unitprice="<%= e.purchase_price || 0 %>"><%= e.name %> (<%= e.model %>) - available: <%= e.quantity || 0 %></option>
+        <% end %>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="required">Quantity to deploy</label>
+      <input id="deploy_qty" class="stepper" type="number" name="quantity" value="1" min="1">
+    </div>
+
+    <div class="field">
+      <label class="required">Assign to (user)</label>
+      <input type="text" name="assignee_name" placeholder="Employee name or username" required>
+    </div>
+
+    <div class="field">
+      <label class="required">Deploy Location (office)</label>
+      <input type="text" name="deploy_location" placeholder="e.g. Manila Office - 3rd Floor" required>
+    </div>
+
+    <div class="field" id="serial_single_wrap">
+      <label>Serial Number (optional)</label>
+      <div style="display:flex; gap:8px; align-items:center">
+        <input type="text" name="serial_number" id="serial_single" placeholder="Enter serial number if applicable" style="flex:1">
+        <button type="button" id="scan_serial_btn" class="btn-secondary" style="white-space:nowrap">Scan serial</button>
+      </div>
+    </div>
+
+    <div class="field" id="serials_group_wrap" style="display:none">
+      <label class="required">Component serials (desktop)</label>
+      <div id="serials_container">
+        <!-- dynamic per-unit component serial inputs will be inserted here -->
+      </div>
+      <div style="font-size:0.9rem;color:var(--muted);margin-top:8px">Enter serial for each component per unit being deployed (monitor, system_unit, keyboard, mouse, avr)</div>
+    </div>
+
+    <div class="field">
+      <label>Unit Price (₱)</label>
+      <input id="deploy_unit_price" type="text" readonly style="background:transparent;border:none;color:#d9ffd8;font-weight:600">
+    </div>
+
+    <div class="field">
+      <label>Total Price (₱)</label>
+      <input id="deploy_total_price" type="text" readonly style="background:transparent;border:none;color:#d9ffd8;font-weight:600">
+    </div>
+
+    <div class="form-actions">
+      <button class="btn-primary" type="submit">Deploy</button>
+      <a class="btn-secondary" href="/requests">Cancel</a>
+    </div>
+
+  </form>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    var cat = document.getElementById('deploy_category');
+    var equip = document.getElementById('deploy_equipment');
+    var qty = document.getElementById('deploy_qty');
+    var unit = document.getElementById('deploy_unit_price');
+    var total = document.getElementById('deploy_total_price');
+
+    function filterEquipments(){
+      var c = cat.value;
+      Array.from(equip.options).forEach(function(opt){
+        if(!opt.value) return; // keep placeholder
+        var ec = opt.getAttribute('data-category') || '';
+        opt.style.display = (c === '' || ec === c) ? 'block' : 'none';
+      });
+      equip.value = '';
+      updatePrice();
+    }
+
+    function updatePrice(){
+      var selected = equip.options[equip.selectedIndex];
+      if(!selected || !selected.value){ unit.value = ''; total.value = ''; return; }
+      var up = parseFloat(selected.getAttribute('data-unitprice') || 0);
+      var available = parseInt(selected.getAttribute('data-qty') || 0);
+      qty.max = available; if(parseInt(qty.value) > available) qty.value = available;
+      unit.value = '₱ ' + up.toFixed(2);
+      var t = (up * (parseInt(qty.value||0))).toFixed(2);
+      total.value = '₱ ' + t;
+    }
+
+    cat.addEventListener('change', filterEquipments);
+    equip.addEventListener('change', updatePrice);
+    qty.addEventListener('input', updatePrice);
+
+    function maybeShowSerials(){
+      var selected = equip.options[equip.selectedIndex];
+      var ec = (selected && selected.getAttribute('data-category')) || '';
+      var isDesktop = ec && ec.toLowerCase() === 'desktop';
+      var single = document.getElementById('serial_single_wrap');
+      var group = document.getElementById('serials_group_wrap');
+      if(isDesktop){
+        single.style.display = 'none';
+        group.style.display = 'block';
+        renderSerials();
+      } else {
+        single.style.display = 'block';
+        group.style.display = 'none';
+      }
+    }
+
+    equip.addEventListener('change', maybeShowSerials);
+    qty.addEventListener('input', maybeShowSerials);
+
+    function renderSerials(){
+      var container = document.getElementById('serials_container');
+      container.innerHTML = '';
+      var n = parseInt(qty.value || 0);
+      if(n <= 0) return;
+      var components = ['monitor','system_unit','keyboard','mouse','avr'];
+      for(var i=0;i<n;i++){
+        var box = document.createElement('div');
+        box.style.border = '1px solid rgba(255,255,255,0.03)';
+        box.style.padding = '8px';
+        box.style.marginBottom = '8px';
+        var title = document.createElement('div'); title.style.fontWeight='600'; title.style.marginBottom='6px'; title.innerText = 'Unit ' + (i+1);
+        box.appendChild(title);
+        components.forEach(function(c){
+          var fld = document.createElement('div'); fld.style.marginBottom='6px';
+          var lbl = document.createElement('label'); lbl.innerText = c.replace('_',' ') ; lbl.style.display='block'; lbl.style.marginBottom='4px';
+          var inp = document.createElement('input'); inp.type='text'; inp.name = 'serials['+i+']['+c+']'; inp.placeholder = c + ' serial'; inp.style.width='100%'; inp.style.padding='8px'; inp.style.borderRadius='6px'; inp.style.background='rgba(0,0,0,0.14)'; inp.style.color='#eaf6ff'; inp.style.border='1px solid rgba(255,255,255,0.04)';
+          fld.appendChild(lbl); fld.appendChild(inp); box.appendChild(fld);
+        });
+        container.appendChild(box);
+      }
+    }
+
+    // call it once to reflect initial state
+    maybeShowSerials();
+
+    // initial filter to hide non-matching
+    filterEquipments();
+  });
+</script>
+
+<!-- Scanner modal and scripts -->
+<div id="scannerModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:3000; align-items:center; justify-content:center">
+  <div style="width:100%; max-width:720px; background:var(--card); padding:12px; border-radius:10px; box-sizing:border-box; color:#eaf6ff;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+      <strong>Scan Serial</strong>
+      <div>
+        <button id="closeScanner" class="btn-secondary">Close</button>
+      </div>
+    </div>
+    <div style="position:relative; background:#000; border-radius:8px; overflow:hidden">
+      <video id="scannerVideo" autoplay muted playsinline style="width:100%; height:360px; object-fit:cover; background:#000"></video>
+      <div style="position:absolute; inset:0; pointer-events:none; display:flex; align-items:center; justify-content:center">
+        <div style="width:60%; height:40%; border:2px dashed rgba(255,255,255,0.18); border-radius:8px"></div>
+      </div>
+    </div>
+      <div id="scannerPreviewWrap" style="display:none; margin-top:8px">
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px">Captured preview (used for decoding attempts)</div>
+        <img id="scannerPreview" src="" alt="capture preview" style="width:100%; border-radius:6px; background:#111" />
+      </div>
+    <div style="display:flex; gap:8px; margin-top:8px; align-items:center">
+      <input id="fileFallback" type="file" accept="image/*" capture="environment" style="display:none">
+      <button id="capture_btn" class="btn-primary">Capture</button>
+      <button id="usePhoto" class="btn-secondary">Use photo</button>
+      <div style="flex:1; text-align:right; color:var(--muted)">Point your camera at the barcode or QR on the equipment label</div>
+    </div>
+  </div>
+</div>
+
+<!-- ZXing fallback library -->
+<script src="https://unpkg.com/@zxing/browser@0.0.11/dist/index.min.js"></script>
+<script>
+  (function(){
+    var scanBtn = document.getElementById('scan_serial_btn');
+    var modal = document.getElementById('scannerModal');
+    var closeBtn = document.getElementById('closeScanner');
+    var video = document.getElementById('scannerVideo');
+    var fileInput = document.getElementById('fileFallback');
+    var usePhoto = document.getElementById('usePhoto');
+    var serialInput = document.getElementById('serial_single');
+
+    var stream = null;
+    var barcodeDetector = null;
+    var zxingReader = null;
+    var scanning = false;
+
+    async function startCamera(){
+      try{
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+        await video.play();
+      }catch(e){
+        console.error('Camera start failed', e);
+        alert('Unable to access camera. Use photo fallback.');
+        return false;
+      }
+      return true;
+    }
+
+    async function stopCamera(){
+      try{ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; } }catch(e){}
+      try{ video.pause(); video.srcObject = null; }catch(e){}
+    }
+
+    async function detectLoop(){
+      if(!scanning) return;
+      if(window.BarcodeDetector){
+        try{
+          if(!barcodeDetector){
+            var supported = await BarcodeDetector.getSupportedFormats();
+            barcodeDetector = new BarcodeDetector({ formats: supported });
+          }
+          const results = await barcodeDetector.detect(video);
+          if(results && results.length){
+            onDetected(results[0].rawValue);
+            return;
+          }
+        }catch(e){
+          // fall through to zxing
+          console.debug('BarcodeDetector error', e);
+        }
+      }
+
+      // ZXing fallback using decodeOnceFromVideoElement
+      if(zxingReader){
+        try{
+          const result = await zxingReader.decodeOnceFromVideoElement(video);
+          if(result && result.text){ onDetected(result.text); return; }
+        }catch(e){ /* ignore timed out frames */ }
+      }
+
+      requestAnimationFrame(detectLoop);
+    }
+
+    function onDetected(text){
+      scanning = false;
+      serialInput.value = text;
+      closeScanner();
+    }
+
+    async function openScanner(){
+      modal.style.display = 'flex';
+      var ok = await startCamera();
+      if(!ok) return;
+      scanning = true;
+      // prepare ZXing reader
+      try{ zxingReader = new ZXing.BrowserMultiFormatReader(); }catch(e){ zxingReader = null; }
+      detectLoop();
+    }
+
+    function closeScanner(){
+      scanning = false;
+      stopCamera();
+      modal.style.display = 'none';
+      // release zxing reader
+      try{ if(zxingReader){ zxingReader.reset(); zxingReader = null; } }catch(e){}
+    }
+
+    scanBtn.addEventListener('click', function(){ openScanner(); });
+    closeBtn.addEventListener('click', function(){ closeScanner(); });
+
+    usePhoto.addEventListener('click', function(){ fileInput.click(); });
+    var captureBtn = document.getElementById('capture_btn');
+
+    captureBtn.addEventListener('click', async function(){
+      if(!video || video.readyState < 2){
+        alert('Camera not ready yet');
+        return;
+      }
+      try{
+        // create canvas sized to the video element's displayed size
+        var canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || video.clientWidth;
+        canvas.height = video.videoHeight || video.clientHeight;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Show preview for debugging and attempt smarter decoding (rotations + scale)
+        try{
+          var dataUrl = canvas.toDataURL('image/png');
+          var preview = document.getElementById('scannerPreview');
+          var previewWrap = document.getElementById('scannerPreviewWrap');
+          preview.src = dataUrl;
+          previewWrap.style.display = 'block';
+
+          var img = document.createElement('img');
+          img.src = dataUrl;
+          img.onload = async function(){
+            var decoded = await attemptDecodeWithTransforms(img);
+            if(decoded){
+              if(confirm('Detected: "' + decoded + '"\nFill this into the Serial Number field?')){
+                onDetected(decoded);
+                return;
+              } else {
+                // user rejected, keep modal open
+                return;
+              }
+            }
+            alert('No barcode detected in the captured frame. Try using the photo fallback or adjust camera distance/lighting.');
+          };
+        }catch(e){ console.error('Capture fallback failed', e); alert('Failed to process capture'); }
+      }catch(err){ console.error(err); alert('Capture failed'); }
+    });
+
+    // Helper: try BarcodeDetector and ZXing on variations (rotations + upscales)
+    async function attemptDecodeWithTransforms(img){
+      // create helper to draw rotated/scaled canvas
+      function makeCanvasFromImg(image, angleDeg, scale){
+        var rad = angleDeg * Math.PI / 180;
+        var iw = image.naturalWidth || image.width;
+        var ih = image.naturalHeight || image.height;
+        var sw = Math.round(iw * scale);
+        var sh = Math.round(ih * scale);
+        var c = document.createElement('canvas');
+        // if rotated 90 or 270 swap width/height
+        if(angleDeg % 180 !== 0){ c.width = sh; c.height = sw; }
+        else { c.width = sw; c.height = sh; }
+        var ctx = c.getContext('2d');
+        ctx.save();
+        // translate to center
+        ctx.translate(c.width/2, c.height/2);
+        ctx.rotate(rad);
+        ctx.drawImage(image, -sw/2, -sh/2, sw, sh);
+        ctx.restore();
+        return c;
+      }
+
+      var rotations = [0,90,270];
+      var scales = [1,1.5,2];
+
+      for(var s=0;s<scales.length;s++){
+        for(var r=0;r<rotations.length;r++){
+          try{
+            var canvasTry = makeCanvasFromImg(img, rotations[r], scales[s]);
+            // First try BarcodeDetector if available
+            if(window.BarcodeDetector){
+              try{
+                var bitmap = await createImageBitmap(canvasTry);
+                var det = new BarcodeDetector();
+                var res = await det.detect(bitmap);
+                if(res && res.length){ return res[0].rawValue; }
+              }catch(e){ /* continue to ZXing */ }
+            }
+            // ZXing fallback using image element
+            try{
+              var dataUrl = canvasTry.toDataURL('image/png');
+              var imgEl = document.createElement('img');
+              imgEl.src = dataUrl;
+              await new Promise((resolve)=>{ imgEl.onload = resolve; imgEl.onerror = resolve; });
+              var reader = new ZXing.BrowserMultiFormatReader();
+              try{
+                var rres = await reader.decodeFromImageElement(imgEl);
+                if(rres && rres.text) return rres.text;
+              }catch(e){ /* continue */ }
+            }catch(e){ /* ignore */ }
+          }catch(e){ console.debug('transform attempt failed', e); }
+        }
+      }
+      return null;
+    }
+    fileInput.addEventListener('change', async function(ev){
+      var f = ev.target.files && ev.target.files[0];
+      if(!f) return;
+      try{
+        var img = document.createElement('img');
+        img.src = URL.createObjectURL(f);
+        var preview = document.getElementById('scannerPreview');
+        var previewWrap = document.getElementById('scannerPreviewWrap');
+        img.onload = async function(){
+          preview.src = img.src;
+          previewWrap.style.display = 'block';
+          var decoded = await attemptDecodeWithTransforms(img);
+          if(decoded){
+            if(confirm('Detected: "' + decoded + '"\nFill this into the Serial Number field?')){
+              onDetected(decoded);
+              return;
+            } else {
+              return;
+            }
+          }
+          alert('No barcode detected in the photo.');
+        };
+      }catch(e){ console.error(e); alert('Failed to read image'); }
+    });
+  })();
+</script>

@@ -1,0 +1,179 @@
+<style>
+  .inventory-wrap { display:grid; grid-template-columns: 280px 1fr; gap:20px; }
+  .filter-card { background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent); padding:14px; border-radius:10px; border:1px solid rgba(255,255,255,0.03) }
+  .filter-section { margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.02); padding-bottom:10px }
+  .filter-section h4 { margin:0 0 8px 0; font-size:0.75rem; letter-spacing:1px; color:var(--muted); text-transform:uppercase }
+  .primary-btn { background:var(--accent-2); color:#062017; padding:10px 16px; border-radius:8px; text-decoration:none; font-weight:600 }
+  .action-icon { display:inline-flex; width:30px; height:30px; align-items:center; justify-content:center; border-radius:6px; margin-right:6px; border: none }
+  .icon-view { background: rgba(106,209,255,0.12); color:var(--accent); }
+  .icon-edit { background: rgba(142,247,142,0.08); color:var(--accent-2); }
+  .icon-checkout { background: rgba(255,214,102,0.08); color:#ffd166; }
+  .status-pill { display:inline-block; padding:4px 8px; border-radius:999px; font-size:0.85rem; font-weight:600 }
+  .status-deployed { background: rgba(142,124,255,0.12); color:#c9b7ff }
+  .status-available { background: rgba(139,222,146,0.08); color:#b7f3b0 }
+  .status-maintenance { background: rgba(255,195,102,0.08); color:#ffd6a6 }
+  .status-decommissioned { background: rgba(255,110,110,0.06); color:#ffb3b3 }
+  table.dataTable thead th { background: rgba(255,255,255,0.03); color:#cfeafc; border-bottom:2px solid rgba(255,255,255,0.04); }
+  table.dataTable tbody td { padding:14px 10px }
+  .asset-link { color: var(--accent); font-weight:700 }
+  .muted { color:var(--muted) }
+  .search-input { width:100%; padding:10px 12px; background: rgba(255,255,255,0.02); border-radius:8px; border:1px solid rgba(255,255,255,0.03); color:var(--accent); }
+  .checkbox-custom { display:inline-block; width:14px; height:14px; border-radius:3px; margin-right:8px; vertical-align:middle; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.03) }
+  .filter-label { display:flex; align-items:center; gap:8px; margin:6px 0 }
+  .dataTables_wrapper .dataTables_paginate a { padding:8px 10px; margin:0 4px; border-radius:6px; background: rgba(255,255,255,0.02); color:var(--accent) }
+  .no-data { text-align:center; padding:40px; color:var(--muted) }
+  @media (max-width:900px) { .inventory-wrap { grid-template-columns: 1fr } }
+</style>
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+  <h1 style="margin:0">Inventory</h1>
+  <div>
+    <% if current_user && current_user.super_admin? %>
+      <a class="primary-btn" href="/equipments/new">+ Add New Asset</a>
+    <% end %>
+  </div>
+</div>
+
+<div class="inventory-wrap">
+  <aside class="filter-card">
+    <div class="filter-section">
+      <h4>Search</h4>
+      <div style="display:flex; gap:8px; align-items:center">
+        <input id="filter-search" class="search-input" type="search" placeholder="Search asset name or serial...">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="opacity:0.8"><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <h4>Asset Type</h4>
+      <% @categories.each do |c| %>
+        <div class="filter-label"><span class="checkbox-custom"></span><label><input type="checkbox" class="filter-category" value="<%= c %>" style="display:none"> <span class="muted"><%= c %></span></label></div>
+      <% end %>
+    </div>
+
+    <div class="filter-section">
+      <h4>Assignment Status</h4>
+      <select id="filter-status" style="width:100%; padding:8px; border-radius:8px; background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">
+        <option value="">All</option>
+        <% @statuses.each do |s| %>
+          <option value="<%= s %>"><%= s.capitalize %></option>
+        <% end %>
+      </select>
+    </div>
+
+    <div class="filter-section">
+      <h4>Location</h4>
+      <select id="filter-location" style="width:100%; padding:8px; border-radius:8px; background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03)">
+        <option value="">All</option>
+        <% @locations.each do |l| %>
+          <option value="<%= l %>"><%= l %></option>
+        <% end %>
+      </select>
+    </div>
+
+    <div style="margin-top:10px; text-align:right">
+      <button id="filter-clear" class="action-icon" style="background:transparent; color:var(--muted)">Clear</button>
+    </div>
+  </aside>
+
+  <section>
+    <table id="equipments-table" class="display" style="width:100%">
+      <thead>
+        <tr>
+          <th>Asset Tag <span class="muted">⇅</span></th>
+          <th>Name (Model) <span class="muted">⇅</span></th>
+          <th>Status</th>
+          <th>Location / User <span class="muted">⇅</span></th>
+          <th>Qty <span class="muted">⇅</span></th>
+          <th>Last Updated <span class="muted">⇅</span></th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if @equipments.any? %>
+        <% @equipments.each do |e| %>
+          <tr>
+            <td><%= e.serial_number %></td>
+            <td><a class="asset-link" href="/equipments/<%= e.id %>"><%= e.name %></a> <div class="muted" style="font-weight:400"> <%= e.model %></div></td>
+            <td>
+              <% status_class = case e.status.to_s.downcase
+                 when 'deployed' then 'status-deployed'
+                 when 'available' then 'status-available'
+                 when 'maintenance' then 'status-maintenance'
+                 else 'status-decommissioned'
+               end %>
+              <span class="status-pill <%= status_class %>"><%= e.status.capitalize %></span>
+            </td>
+            <td class="muted"><%= e.location %></td>
+            <td><%= e.quantity %></td>
+            <td class="muted"><%= e.updated_at.strftime('%Y-%m-%d %H:%M') %></td>
+            <td>
+              <a title="View" class="action-icon icon-view" href="/equipments/<%= e.id %>"> 
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.2"></circle></svg>
+              </a>
+              <% if current_user && current_user.super_admin? %>
+                <a title="Edit" class="action-icon icon-edit" href="/equipments/<%= e.id %>/edit"> 
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 21v-3.75L17.81 2.44a2 2 0 012.83 0l0 0a2 2 0 010 2.83L5.86 20.08H3z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </a>
+              <% end %>
+              
+              <a title="Check Out" class="action-icon icon-checkout" href="/requests"> 
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 10l5-5 5 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </a>
+            </td>
+          </tr>
+        <% end %>
+        <% else %>
+          <tr><td colspan="7"><div class="no-data">No assets found matching your criteria</div></td></tr>
+        <% end %>
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<!-- DataTables and jQuery from CDN -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+<script>
+  $(document).ready(function(){
+    var table = $('#equipments-table').DataTable({
+      pageLength: 10,
+      order: [[5, 'desc']],
+      columnDefs: [ { orderable: false, targets: 6 } ],
+      language: { emptyTable: "No assets found matching your criteria" }
+    });
+
+    // Custom filtering
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
+      var categories = $('.filter-category:checked').map(function(){ return this.value }).get();
+      var status = $('#filter-status').val();
+      var location = $('#filter-location').val();
+      var name = data[1] || '';
+      var rowStatus = data[2] || '';
+      var rowLocation = data[3] || '';
+
+      if(categories.length){
+        var matched = categories.some(function(c){ return name.indexOf(c) !== -1 });
+        if(!matched) return false;
+      }
+      if(status && rowStatus.toLowerCase() !== status.toLowerCase()) return false;
+      if(location && rowLocation !== location) return false;
+
+      return true;
+    });
+
+    // hook filters
+    $(document).on('change', '.filter-category, #filter-status, #filter-location', function(){ table.draw(); });
+    $('#filter-search').on('keyup', function(){ table.search(this.value).draw(); });
+    $('#filter-clear').on('click', function(){
+      $('.filter-category').prop('checked', false);
+      $('#filter-status').val('');
+      $('#filter-location').val('');
+      $('#filter-search').val('');
+      table.search('').draw();
+      table.draw();
+    });
+  });
+</script>

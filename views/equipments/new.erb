@@ -1,0 +1,122 @@
+<div class="form-card">
+  <h1>Add Equipment</h1>
+  <form action="/equipments" method="post">
+    <div class="form-grid">
+      <div>
+        <div class="field">
+          <label class="required">Name</label>
+          <input type="text" name="equipment[name]" required autofocus>
+        </div>
+
+        <!-- Serial Number removed per request -->
+
+        <div class="field">
+          <label>Model</label>
+          <input type="text" name="equipment[model]">
+        </div>
+
+        <div class="field">
+          <label>Brand</label>
+          <input type="text" name="equipment[brand]">
+        </div>
+
+        <div class="field">
+          <label>Vendor</label>
+          <input type="text" name="equipment[vendor]">
+        </div>
+
+        <div class="field">
+          <label>Category</label>
+          <select name="equipment[category]" id="category_select">
+            <option value="">-- Select category --</option>
+            <% if defined?(@categories) && @categories.any? %>
+              <% @categories.each do |c| %>
+                <option value="<%= c %>"><%= c %></option>
+              <% end %>
+            <% end %>
+            <option value="other">Other...</option>
+          </select>
+          <input type="text" name="equipment[category_other]" id="category_other" placeholder="Type new category" style="display:none;margin-top:8px">
+        </div>
+      </div>
+      <div>
+        <div class="field">
+          <label>Purchase Date</label>
+          <input type="date" name="equipment[purchase_date]">
+        </div>
+
+        <div class="field">
+          <label>Warranty Until</label>
+          <input type="date" name="equipment[warranty_until]">
+        </div>
+
+        <div class="field">
+          <label>Status</label>
+          <select name="equipment[status]" id="status_select">
+            <% if defined?(@statuses) && @statuses.any? %>
+              <% @statuses.each do |s| %>
+                <option value="<%= s %>"><%= s %></option>
+              <% end %>
+            <% end %>
+            <option value="available" selected>available</option>
+            <option value="deployed">deployed</option>
+            <option value="maintenance">maintenance</option>
+            <option value="retired">retired</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="required">Unit Price (₱)</label>
+          <div class="input-group">
+            <span class="input-prefix">₱</span>
+            <input type="number" step="0.01" name="equipment[purchase_price]" id="unit_price" value="0.00" min="0">
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="required">Quantity</label>
+          <input class="stepper" id="qty_input" type="number" name="equipment[quantity]" value="1" min="0">
+        </div>
+
+        <div class="field">
+          <label>Total Price (₱)</label>
+          <input type="text" id="total_price" readonly style="background:transparent;border:none;color:#d9ffd8;font-weight:600">
+        </div>
+      </div>
+        <label>Notes</label>
+        <textarea name="equipment[notes]"></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-primary" type="submit">Create</button>
+        <a class="btn-secondary" href="/equipments">Cancel</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  // toggle category 'Other' and compute total price
+  document.addEventListener('DOMContentLoaded', function(){
+    function toggleOther(selectId, otherId){
+      var sel = document.getElementById(selectId);
+      var other = document.getElementById(otherId);
+      if(!sel || !other) return;
+      sel.addEventListener('change', function(){
+        other.style.display = (sel.value === 'other') ? 'block' : 'none';
+      });
+    }
+    toggleOther('category_select','category_other');
+
+    var price = document.getElementById('unit_price');
+    var qty = document.getElementById('qty_input');
+    var total = document.getElementById('total_price');
+    function compute(){
+      var p = parseFloat(price.value || 0);
+      var q = parseInt(qty.value || 0);
+      var t = (p * q).toFixed(2);
+      if(total) total.value = '₱ ' + t;
+    }
+    if(price && qty){ price.addEventListener('input', compute); qty.addEventListener('input', compute); compute(); }
+  });
+</script>

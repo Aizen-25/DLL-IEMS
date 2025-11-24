@@ -1,0 +1,167 @@
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px">
+  <h1 style="color:var(--accent); margin:0">Inventory Insights</h1>
+  <form method="get" action="/dashboard" style="display:flex; gap:8px; align-items:center">
+    <label for="year_filter" style="color:var(--muted); font-size:0.9rem">Filter by Year:</label>
+    <input type="number" id="year_filter" name="year" value="<%= params['year'] || Date.today.year %>" 
+           min="2000" max="<%= Date.today.year + 1 %>" 
+           style="padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:var(--text); width:90px">
+    <button type="submit" style="padding:6px 14px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer">Apply</button>
+    <% if params['year'] %>
+      <a href="/dashboard" style="padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:var(--muted); text-decoration:none; font-size:0.85rem">Clear</a>
+    <% end %>
+  </form>
+</div>
+
+<style>
+  .dark-grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px }
+  .card { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid rgba(255,255,255,0.03); padding:14px; border-radius:10px }
+  .card.compact { padding:8px }
+  .title { color:#cfeafc; margin-bottom:8px }
+  .metric-big { font-size:1.6rem; color:var(--accent) }
+  .muted { color:var(--muted) }
+  .turnover { display:flex; gap:12px; }
+  .turnover .tile { padding:10px; border-radius:8px; background: rgba(255,255,255,0.02); text-align:center }
+  @media (max-width:1000px) { .dark-grid { grid-template-columns: 1fr 1fr } }
+  @media (max-width:700px) { .dark-grid { grid-template-columns: 1fr } .lead-grid { grid-template-columns: 1fr } }
+  /* responsive chart canvas sizing */
+  .chart-canvas { width: 100%; display: block; height: 220px; }
+  @media (max-width: 900px) { .chart-canvas { height: 180px } }
+  @media (max-width: 480px) { .chart-canvas { height: 140px } }
+  /* full-on-mobile: span full grid on narrower viewports */
+  @media (max-width: 900px) {
+    .dark-grid .full-on-mobile { grid-column: 1 / -1 }
+  }
+</style>
+
+<div class="dark-grid">
+  <div style="display:flex; gap:12px; margin-bottom:12px">
+    <div class="card" style="flex:1; text-align:center">
+      <div class="muted">Total Deployed</div>
+      <div class="metric-big" style="font-size:2rem"><%= @total_deployed %></div>
+    </div>
+    <div class="card" style="flex:1; text-align:center">
+      <div class="muted">Total Available Stock</div>
+      <div class="metric-big" style="font-size:2rem"><%= @total_available_stock %></div>
+    </div>
+  </div>
+
+  <div class="card compact full-on-mobile">
+    <div class="title">Office distribution</div>
+    <%= erb :'_distribution_chart', locals: { rows: @location_rows, canvas_id: nil, enable_chart: false, limit: 5 } %>
+  </div>
+  <div class="card compact full-on-mobile">
+    <div class="title">Status</div>
+    <%= erb :'_distribution_chart', locals: { rows: @status_rows, canvas_id: nil, enable_chart: false, limit: 5 } %>
+  </div>
+  <div class="card compact full-on-mobile">
+    <div class="title">Deployed by Category</div>
+    <%= erb :'_distribution_chart', locals: { rows: @deployed_by_category_rows || @deployed_by_category, canvas_id: nil, enable_chart: false, limit: 5 } %>
+  </div>
+  <div class="card full-on-mobile">
+    <div class="title">Inventory Turnover Rate (Quarterly)</div>
+    <div class="turnover">
+      <% @turnover_rates.each do |q,v| %>
+        <div class="tile">
+          <div class="muted"><%= q %></div>
+          <div class="metric-big"><%= v %>x</div>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:12px" class="card">
+  <div class="title">Deployed Items (Top)</div>
+  <% @top_deployed.each do |p| %>
+    <div style="margin-bottom:8px">
+      <strong><%= "#{p[:deployed]} - #{p[:name]}" %></strong>
+      <div style="margin-left:8px; color:var(--muted); font-size:0.95rem">
+        <% if p[:deployed_names] && p[:deployed_names].any? %>
+          <% p[:deployed_names].each do |dn| %>
+            <div><%= dn %></div>
+          <% end %>
+        <% else %>
+          <div>No deployed details available</div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+</div>
+
+<!-- Load local Chart.js vendor copy to ensure offline/blocked environments work -->
+<script src="/vendor/chart.min.js"></script>
+<script>
+  // Lazy-init helper for charts: initialize when element is visible to save CPU on low-end devices
+  function lazyInit(elementId, initFn){
+    try{
+      var el = document.getElementById(elementId);
+      if(!el) { initFn(); return; }
+      if('IntersectionObserver' in window){
+        var io = new IntersectionObserver(function(entries, obs){
+          entries.forEach(function(ent){ if(ent.isIntersecting){ try{ initFn(); }catch(e){} obs.unobserve(el); } });
+        }, { root: null, threshold: 0.1 });
+        io.observe(el);
+      } else {
+        // fallback: init after small timeout
+        setTimeout(initFn, 120);
+      }
+    } catch(e){ try{ initFn(); }catch(_){ } }
+  }
+  // low-end heuristic: small viewport or few CPU cores
+  const lowEndDevice = (window.innerWidth <= 480) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2);
+  // Small fail-safe canvas renderer used when Chart.js is unavailable.
+  function drawBarChartFallback(canvasId, labels, data, opts) {
+    try {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      // ensure computed size; do pixel-ratio scaling for crisp bars
+      const ratio = window.devicePixelRatio || 1;
+      const cw = Math.max(200, Math.floor((canvas.clientWidth || 600)));
+      const ch = Math.max(100, Math.floor((canvas.clientHeight || 200)));
+      canvas.style.display = 'block';
+      canvas.width = Math.floor(cw * ratio);
+      canvas.height = Math.floor(ch * ratio);
+      canvas.style.width = cw + 'px';
+      canvas.style.height = ch + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      // clear
+      ctx.clearRect(0,0,cw,ch);
+      const padding = 24;
+      const w = cw - padding * 2;
+      const h = ch - padding * 2;
+      const max = Math.max(1, ...data);
+      const barGap = 12;
+      const barWidth = Math.max(18, (w - (labels.length - 1) * barGap) / labels.length);
+      labels.forEach(function(label, i){
+        const val = data[i] || 0;
+        const x = padding + i * (barWidth + barGap);
+        const barH = (val / max) * (h - 20);
+        const y = padding + (h - barH);
+        // bar background
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(x, padding, barWidth, h);
+        // bar
+        ctx.fillStyle = opts && opts.color ? opts.color : 'rgba(54,162,235,0.9)';
+        ctx.fillRect(x, y, barWidth, barH);
+        // label
+        ctx.fillStyle = '#cfeafc';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        const tx = x + barWidth/2;
+        ctx.fillText(label, tx, ch - 6);
+        // value
+        ctx.fillText(String(val), tx, y - 6);
+      });
+    } catch (e) {
+      console.error('drawBarChartFallback error', e);
+    }
+  }
+
+  // inventory data handled by other widgets; product-level bar and stockout gauges removed
+
+  // Office distribution handled by server-rendered partial (no client chart required)
+
+  
+  // global client-side error capture and debug banner removed
+</script>

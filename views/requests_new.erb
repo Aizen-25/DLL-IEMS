@@ -1,0 +1,17 @@
+<h1>New Request</h1>
+
+<form action="/requests" method="post">
+  <label>Requester Name:<br><input type="text" name="request[requester_name]" required></label><br>
+  <label>Equipment:<br>
+    <select name="request[equipment_id]">
+      <% @equipments.each do |e| %>
+        <option value="<%= e.id %>"><%= e.name %> (<%= e.serial_number %>) - Qty: <%= e.quantity %></option>
+      <% end %>
+    </select>
+  </label><br>
+  <label>Quantity:<br><input type="number" name="request[quantity]" value="1" min="1"></label><br>
+  <label>Notes:<br><textarea name="request[notes]"></textarea></label><br>
+  <button type="submit">Submit Request</button>
+</form>
+
+<p><a href="/requests">Back to Requests</a></p>

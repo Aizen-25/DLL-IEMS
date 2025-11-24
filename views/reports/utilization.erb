@@ -1,0 +1,22 @@
+<h2>Utilization Report</h2>
+
+<form method="get" action="/reports/utilization">
+  <label>From: <input type="date" name="from"></label>
+  <label>To: <input type="date" name="to"></label>
+  <button type="submit">Generate</button>
+  <button type="submit" name="format" value="csv">Export CSV</button>
+</form>
+
+<table style="width:100%; margin-top:12px;" border="0">
+  <thead><tr><th>Asset Tag</th><th>Name</th><th>Model</th><th>Usages</th></tr></thead>
+  <tbody>
+    <% @rows.each do |r| %>
+      <tr>
+        <td><%= r[:equipment].serial_number %></td>
+        <td><%= r[:equipment].name %></td>
+        <td><%= r[:equipment].model %></td>
+        <td><%= r[:usages] %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

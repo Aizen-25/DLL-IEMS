@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Chart Test</title>
+    <style>body{background:#0b0f14;color:#e6eef6;font-family:Inter,system-ui;padding:24px} .card{background:#0f1720;padding:18px;border-radius:8px}</style>
+  </head>
+  <body>
+    <div class="card">
+      <h3>Chart Test (dummy data)</h3>
+      <canvas id="testChart" class="chart-canvas" style="display:block"></canvas>
+      <div id="test_debug" style="margin-top:8px;color:#9aa6b2"></div>
+    </div>
+
+    <script src="/vendor/chart.min.js"></script>
+    <script>
+      // server-provided category data (fallback to a single Laptop entry if none)
+        const labels = <%= @cat_labels.to_json %>;
+        const values = <%= @cat_data.to_json %>;
+
+      function drawFallback(canvasId, labels, data){
+        try{
+          const canvas = document.getElementById(canvasId);
+          if(!canvas) return;
+          const ratio = window.devicePixelRatio || 1;
+          const cw = Math.max(300, canvas.clientWidth || 600);
+          const ch = Math.max(150, canvas.clientHeight || 300);
+          canvas.width = Math.floor(cw * ratio);
+          canvas.height = Math.floor(ch * ratio);
+          canvas.style.width = cw + 'px';
+          canvas.style.height = ch + 'px';
+          const ctx = canvas.getContext('2d');
+          ctx.setTransform(ratio,0,0,ratio,0,0);
+          ctx.clearRect(0,0,cw,ch);
+          const pad = 24; const w = cw - pad*2; const h = ch - pad*2;
+          const max = Math.max(1, ...data); const gap = 12;
+          const bw = Math.max(18, (w - (labels.length-1)*gap)/labels.length);
+          labels.forEach((lab,i)=>{
+            const val = data[i]||0; const x = pad + i*(bw+gap); const barH = (val/max)*(h-20); const y = pad + (h-barH);
+            ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(x,pad,bw,h);
+            ctx.fillStyle = 'rgba(54,162,235,0.9)'; ctx.fillRect(x,y,bw,barH);
+            ctx.fillStyle = '#cfeafc'; ctx.font = '12px sans-serif'; ctx.textAlign='center'; ctx.fillText(lab, x + bw/2, ch - 6);
+            ctx.fillText(String(val), x + bw/2, y - 6);
+          });
+        }catch(e){ console.error('fallback draw failed', e); }
+      }
+
+      // Try Chart.js first, but lazy-init for performance
+      try{
+        lazyInit('testChart', function(){
+          try{
+            if (typeof Chart !== 'undefined'){
+              const ctx = document.getElementById('testChart').getContext('2d');
+              new Chart(ctx, { type:'bar', data:{ labels: labels, datasets:[{ label:'Dummy', data: values, backgroundColor: 'rgba(54,162,235,0.9)' }] }, options:{ responsive:true, maintainAspectRatio:false, animation: (lowEndDevice? false : undefined), plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true } } } });
+              document.getElementById('test_debug').textContent = 'Rendered with Chart.js (' + (Chart.version || 'unknown') + ')';
+            } else {
+              document.getElementById('test_debug').textContent = 'Chart.js unavailable — using fallback';
+              drawFallback('testChart', labels, values);
+            }
+          }catch(err){
+            console.error('chart test error', err);
+            document.getElementById('test_debug').textContent = 'Chart error — using fallback';
+            drawFallback('testChart', labels, values);
+          }
+        });
+      }catch(err){
+        console.error('chart test lazy init failed', err);
+        document.getElementById('test_debug').textContent = 'Chart error — using fallback';
+        drawFallback('testChart', labels, values);
+      }
+    </script>
+  </body>
+</html>

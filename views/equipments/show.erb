@@ -1,0 +1,46 @@
+<% if params['created'] %>
+  <!-- Centered modal for create confirmation -->
+  <div id="createdModalBackdrop" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:2000">
+    <div id="createdModal" role="dialog" aria-modal="true" aria-labelledby="createdModalTitle" style="background:var(--card); color:#e6eef6; padding:18px; border-radius:10px; width:90%; max-width:420px; box-shadow:0 12px 40px rgba(0,0,0,0.6);">
+      <h3 id="createdModalTitle" style="margin:0 0 8px 0; color:var(--accent)">Equipment successfully added</h3>
+      <p style="margin:0 0 12px 0">Equipment <strong><%= @equipment.serial_number %></strong> has been added to inventory.</p>
+      <div style="display:flex; gap:10px; justify-content:flex-end">
+        <a id="addAnotherBtn" class="btn-primary" href="/equipments/new">Add Another</a>
+        <button id="cancelModalBtn" class="btn-secondary" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function(){
+      var backdrop = document.getElementById('createdModalBackdrop');
+      var cancel = document.getElementById('cancelModalBtn');
+      var addBtn = document.getElementById('addAnotherBtn');
+      // focus primary action for keyboard users
+      if(addBtn) addBtn.focus();
+      function close(){ if(backdrop) backdrop.style.display='none'; }
+      cancel.addEventListener('click', close);
+      backdrop.addEventListener('click', function(evt){ if(evt.target===backdrop) close(); });
+      // close on ESC key
+      window.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+    })();
+  </script>
+<% end %>
+
+<h1><%= @equipment.name %> (ID: <%= @equipment.id %>)</h1>
+<p><strong>Serial:</strong> <%= @equipment.serial_number %></p>
+<p><strong>Brand:</strong> <%= @equipment.brand %></p>
+<p><strong>Model:</strong> <%= @equipment.model %></p>
+<p><strong>Vendor:</strong> <%= @equipment.vendor %></p>
+<p><strong>Category:</strong> <%= @equipment.category %></p>
+<p><strong>Location:</strong> <%= @equipment.location %></p>
+<p><strong>Status:</strong> <%= @equipment.status %></p>
+<p><strong>Purchase Date:</strong> <%= @equipment.purchase_date %></p>
+<p><strong>Warranty Until:</strong> <%= @equipment.warranty_until %></p>
+<p><strong>Notes:</strong> <%= @equipment.notes %></p>
+
+<p>
+  <% if current_user && current_user.super_admin? %>
+    <a href="/equipments/<%= @equipment.id %>/edit">Edit</a> |
+  <% end %>
+  <a href="/equipments">Back to list</a>
+</p>

@@ -1,0 +1,93 @@
+<%#
+  Reusable distribution visual partial.
+  Locals:
+    rows: array of { <label_key>: string, count: integer }
+    canvas_id: optional string id for an interactive Chart.js canvas
+    enable_chart: boolean - whether to attempt a Chart.js interactive render
+    limit: optional integer - how many rows to show before collapsing (default 5)
+%>
+<% uid = "dist#{rand(1..1_000_000)}" %>
+<% display_limit = (defined?(limit) && limit) ? limit.to_i : 5 %>
+<div id="<%= uid %>" class="dist-chart">
+  <style>
+    /* smooth expand/collapse for extra rows */
+    #<%= uid %> .dist-row { transition: max-height 280ms ease, opacity 220ms ease; overflow: hidden; }
+    #<%= uid %> .dist-row.extra { max-height: 0; opacity: 0; }
+    #<%= uid %> .dist-row { max-height: 200px; opacity: 1; }
+    #<%= uid %>.expanded .dist-row.extra { max-height: 200px; opacity: 1; }
+  </style>
+  <div id="<%= (canvas_id || uid) %>_fallback" style="margin-top:6px; padding:8px; background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005)); border:2px dashed rgba(106,209,255,0.12); border-radius:8px;">
+    <%# compute label key dynamically (status/location/category) %>
+    <% label_key = nil %>
+    <% if rows && rows.first %>
+      <% label_key = rows.first.keys.find { |k| k != :count } || rows.first.keys.first %>
+    <% end %>
+    <% max_count = (rows && rows.map { |r| r[:count] }.max || 1).to_f %>
+    <% rows && rows.each_with_index do |row, idx| %>
+      <% label = row[label_key] || row.values.find { |v| v.is_a?(String) } %>
+      <% pct = ((row[:count].to_f / (max_count > 0 ? max_count : 1)) * 100).round(2) %>
+      <% hidden = idx >= display_limit %>
+      <div class="dist-row <%= (hidden ? 'extra' : '') %>" style="display:flex; align-items:center; gap:10px; margin-bottom:6px; padding:2px 0;">
+        <div style="width:140px; color:#cfeafc; font-size:0.95rem"><%= label %></div>
+        <div style="flex:1; background:rgba(255,255,255,0.02); height:12px; border-radius:12px; overflow:hidden;">
+          <div style="height:100%; width:<%= pct %>%; background:linear-gradient(90deg, rgba(54,162,235,0.95), rgba(20,80,150,0.9)); border-right:1px solid rgba(20,80,150,0.6);"></div>
+        </div>
+        <div style="width:36px; text-align:right; color:#cfeafc; font-size:0.95rem"><%= row[:count] %></div>
+      </div>
+    <% end %>
+  </div>
+
+  <% if canvas_id %>
+    <canvas id="<%= canvas_id %>" class="chart-canvas" style="margin-top:10px; border:1px solid rgba(255,255,255,0.03); background: rgba(0,0,0,0.02);"></canvas>
+
+    <% if enable_chart %>
+      <script>
+        (function(){
+          try {
+            var labels = <%= (rows || []).map { |r| (r.values.find { |v| v.is_a?(String) } || r.values.first).to_s }.to_json %>;
+            var data = <%= (rows || []).map { |r| (r[:count] || 0) }.to_json %>;
+            // best-effort Chart.js initialization with lazyInit and fallback
+            lazyInit('<%= canvas_id %>', function(){
+              try{
+                if (typeof Chart !== 'undefined'){
+                  var ctx = document.getElementById('<%= canvas_id %>').getContext('2d');
+                  var labelPlugin = {
+                    id: 'distLabelPlugin',
+                    afterDatasetsDraw: function(chart){
+                      var ctx = chart.ctx;
+                      chart.data.datasets.forEach(function(dataset, i){
+                        var meta = chart.getDatasetMeta(i);
+                        meta.data.forEach(function(bar, index){
+                          var value = dataset.data[index];
+                          ctx.fillStyle = '#cfeafc';
+                          ctx.font = '12px sans-serif';
+                          ctx.textAlign = 'center';
+                          ctx.fillText(value, bar.x, bar.y - 6);
+                        });
+                      });
+                    }
+                  };
+                  new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: labels, datasets: [{ label: '', data: data, backgroundColor: 'rgba(54,162,235,0.9)' }] },
+                    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ color:'#cfeafc' } }, y:{ ticks:{ color:'#9aa6b2' }, beginAtZero:true } } },
+                    plugins: [labelPlugin]
+                  });
+                } else {
+                  drawBarChartFallback('<%= canvas_id %>', labels, data, { color: 'rgba(54,162,235,0.9)' });
+                }
+              } catch(e) { console.error('distribution chart init failed', e); }
+            });
+          } catch(e) { console.error('distribution script error', e); }
+        })();
+      </script>
+    <% end %>
+  <% end %>
+
+  <% if rows && rows.length > display_limit %>
+    <div style="text-align:right; margin-top:8px">
+      <% extra_count = rows.length - display_limit %>
+      <button type="button" class="dist-toggle" aria-expanded="false" onclick="(function(btn, uid, extraCount){ var root=document.getElementById(uid); var expanded = root.classList.toggle('expanded'); btn.setAttribute('aria-expanded', expanded); btn.textContent = expanded ? 'Show less' : ('View ' + extraCount + ' more'); })(this, '<%= uid %>', <%= extra_count %>)" style="background:transparent; border:1px solid rgba(255,255,255,0.04); padding:6px 10px; border-radius:6px; color:#cfeafc">View <%= extra_count %> more</button>
+    </div>
+  <% end %>
+</div>

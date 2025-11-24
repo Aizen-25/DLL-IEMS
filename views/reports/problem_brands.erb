@@ -1,0 +1,194 @@
+<h1>Problematic Brands by Category</h1>
+<p>Shows brands within each category with the highest proportion of items currently in problem statuses (maintenance / under repair / damaged).</p>
+<div style="display:flex; gap:12px; align-items:center; margin-top:10px">
+  <label>Mode:</label>
+  <select id="rb_mode">
+    <option value="snapshot">Snapshot (current status)</option>
+    <option value="history">History (repair events)</option>
+  </select>
+  <label>Top</label>
+  <input id="rb_top_n" type="number" value="10" min="3" max="50" style="width:72px">
+  <label>Chart</label>
+  <select id="rb_chart_type">
+    <option value="pareto">Pareto (horizontal)</option>
+    <option value="stacked">Stacked by Category</option>
+    <option value="timeseries">Time Series (top brands)</option>
+  </select>
+  <label>From</label>
+  <input id="rb_from" type="month">
+  <label>To</label>
+  <input id="rb_to" type="month">
+  <button id="rb_refresh" class="btn-primary">Refresh</button>
+  <button id="rb_csv" class="btn-secondary" title="Download CSV export of this report">Export CSV</button>
+</div>
+
+<div style="margin-top:12px">
+  <canvas id="rb_chart" role="img" aria-label="Problematic brands chart" style="background:transparent; border-radius:6px"></canvas>
+</div>
+
+<div id="rb_table_wrap" style="margin-top:14px">
+  <table style="width:100%; border-collapse:collapse; margin-top:12px">
+  <thead>
+    <tr>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(255,255,255,0.08)">Category</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(255,255,255,0.08)">Brand</th>
+      <th style="text-align:right; padding:8px; border-bottom:1px solid rgba(255,255,255,0.08)">Total Units</th>
+      <th style="text-align:right; padding:8px; border-bottom:1px solid rgba(255,255,255,0.08)">Problem Units</th>
+      <th style="text-align:right; padding:8px; border-bottom:1px solid rgba(255,255,255,0.08)">Problem %</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td colspan="5" style="padding:12px;color:var(--muted)">Use the controls above and press Refresh to load a chart or table.</td></tr>
+  </tbody>
+</table>
+
+<p style="margin-top:12px;color:var(--muted)">Tip: Use this report to identify brand-category combinations that may need supplier review or replacement planning.</p>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  (function(){
+    var ctx = document.getElementById('rb_chart').getContext('2d');
+    var chart = null;
+
+    function fetchData(){
+      var mode = document.getElementById('rb_mode').value;
+      var top_n = document.getElementById('rb_top_n').value;
+      var from = document.getElementById('rb_from').value;
+      var to = document.getElementById('rb_to').value;
+      var url = '/reports/problem_brands.json?mode=' + encodeURIComponent(mode) + '&top_n=' + encodeURIComponent(top_n);
+      if(from) url += '&from=' + encodeURIComponent(from + '-01');
+      if(to) url += '&to=' + encodeURIComponent(to + '-31');
+      return fetch(url).then(function(r){ return r.json(); });
+    }
+
+    var RB_PALETTE = ['#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e','#e6ab02','#a6761d','#666666'];
+
+    function renderPareto(data){
+      var labels = data.pareto.map(function(r){ return r.brand; });
+      var values = data.pareto.map(function(r){ return r.problems; });
+      var cum = data.pareto.map(function(r){ return r.cumulative_pct; });
+      var totalProblems = values.reduce(function(s,v){ return s + v }, 0);
+
+      var barColors = labels.map(function(_,i){ return RB_PALETTE[i % RB_PALETTE.length]; });
+
+      var datasets = [
+        { type: 'bar', label: 'Problem units', data: values, backgroundColor: barColors },
+        { type: 'line', label: 'Cumulative %', data: cum, yAxisID: 'pct', borderColor: '#2b7fcf', backgroundColor: '#2b7fcf', tension:0.2 }
+      ];
+
+      var cfg = {
+        data: { labels: labels, datasets: datasets },
+        options: {
+          indexAxis: 'y',
+          scales: {
+            x: { beginAtZero:true, title: { display: true, text: 'Problem units' } },
+            pct: { position: 'right', min:0, max:100, ticks: { callback: function(v){ return v + '%' } }, grid: { drawOnChartArea: false }, title: { display: true, text: 'Cumulative %' } }
+          },
+          responsive:true,
+          plugins: {
+            legend: { position: 'top' },
+            tooltip: {
+              callbacks: {
+                label: function(context){
+                  if(context.dataset.type === 'bar' || context.datasetIndex === 0){
+                    var idx = context.dataIndex;
+                    var count = context.parsed.x;
+                    var pct = totalProblems > 0 ? ((count / totalProblems) * 100).toFixed(1) + '%' : '0%';
+                    return 'Problems: ' + count + ' (' + pct + ')';
+                  } else {
+                    return context.parsed.y + '% cumulative';
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+      if(chart) chart.destroy();
+      chart = new Chart(ctx, cfg);
+    }
+
+    function renderStacked(data){
+      // data.stacked: { brand: { category: { problem, ok, total } } }
+      var brands = Object.keys(data.stacked || {});
+      var categoriesSet = new Set();
+      brands.forEach(function(b){ Object.keys(data.stacked[b]).forEach(function(c){ categoriesSet.add(c); }); });
+      var categories = Array.from(categoriesSet);
+      var datasets = categories.map(function(cat, i){
+        return {
+          label: cat,
+          data: brands.map(function(b){ var rec = data.stacked[b][cat]; return rec ? rec.problem : 0; }),
+          backgroundColor: 'hsl(' + ((i*60)%360) + ',60%,50%)'
+        };
+      });
+
+      var cfg = {
+        type: 'bar',
+        data: { labels: brands, datasets: datasets },
+        options: {
+          scales: { x: { stacked:true }, y: { stacked:true, beginAtZero:true } },
+          responsive:true,
+          plugins: { legend: { position:'top' }, tooltip: { callbacks: { label: function(ctx){ return ctx.dataset.label + ': ' + ctx.parsed.y; } } } }
+        }
+      };
+      if(chart) chart.destroy();
+      chart = new Chart(ctx, cfg);
+    }
+
+    function renderTimeSeries(data){
+      // data.top_brands, data.by_month (array of maps)
+      var brands = data.top_brands || [];
+      // collate months across brands
+      var monthsSet = new Set();
+      (data.by_month || []).forEach(function(m){ Object.keys(m).forEach(function(k){ monthsSet.add(k); }); });
+      var months = Array.from(monthsSet).sort();
+      var datasets = brands.map(function(b, i){
+        var bym = data.by_month[i] || {};
+        return { label: b, data: months.map(function(m){ return bym[m] || 0 }), borderColor: 'hsl(' + ((i*50)%360) + ',70%,40%)', fill:false, tension:0.2 };
+      });
+
+      var cfg = { type:'line', data: { labels: months, datasets: datasets }, options: { responsive:true, plugins:{ legend:{position:'top'}, tooltip: { callbacks: { label: function(ctx){ return ctx.dataset.label + ': ' + ctx.parsed.y; } } } } } };
+      if(chart) chart.destroy();
+      chart = new Chart(ctx, cfg);
+    }
+
+    function refresh(){
+      fetchData().then(function(data){
+        var chartType = document.getElementById('rb_chart_type').value;
+        if(data.mode === 'history'){
+          if(chartType === 'timeseries') renderTimeSeries(data);
+          else {
+            // history response now includes pareto; use it
+            if(data.pareto) renderPareto(data);
+            else {
+              var obj = { pareto: data.top_brands.map(function(b,i){ return { brand:b, problems: data.counts[i], cumulative_pct: 0 } }) };
+              renderPareto(obj);
+            }
+          }
+        } else {
+          if(chartType === 'pareto') renderPareto(data);
+          else if(chartType === 'stacked') renderStacked(data);
+          else if(chartType === 'timeseries'){
+            // no history data for timeseries in snapshot mode; fallback to pareto
+            renderPareto(data);
+          }
+        }
+      }).catch(function(err){ console.error(err); alert('Failed to fetch report data'); });
+    }
+
+    document.getElementById('rb_refresh').addEventListener('click', refresh);
+    document.getElementById('rb_csv').addEventListener('click', function(){
+      var mode = document.getElementById('rb_mode').value;
+      var top_n = document.getElementById('rb_top_n').value;
+      var from = document.getElementById('rb_from').value;
+      var to = document.getElementById('rb_to').value;
+      var url = '/reports/problem_brands.csv?mode=' + encodeURIComponent(mode) + '&top_n=' + encodeURIComponent(top_n);
+      if(from) url += '&from=' + encodeURIComponent(from + '-01');
+      if(to) url += '&to=' + encodeURIComponent(to + '-31');
+      window.location = url;
+    });
+    // initialize
+    refresh();
+  })();
+</script>

@@ -1,0 +1,29 @@
+<h1>Add New User</h1>
+
+<% if @error %>
+  <div style="color:var(--danger); margin-bottom:20px"><%= @error %></div>
+<% end %>
+
+<form method="post" action="/users" style="max-width:400px">
+  <div style="margin-bottom:20px">
+    <label for="username" style="display:block; margin-bottom:8px">Username</label>
+    <input type="text" id="username" name="username" required style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:var(--text)">
+  </div>
+
+  <div style="margin-bottom:20px">
+    <label for="password" style="display:block; margin-bottom:8px">Temporary Password</label>
+    <input type="password" id="password" name="password" required style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:var(--text)">
+  </div>
+
+  <div style="margin-bottom:20px">
+    <label for="role" style="display:block; margin-bottom:8px">Role</label>
+    <select id="role" name="role" required style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:var(--text)">
+      <option value="">Select Role</option>
+      <option value="normal">Normal User</option>
+      <option value="semi-admin">Semi-Admin</option>
+      <option value="super-admin">Super-Admin</option>
+    </select>
+  </div>
+
+  <button type="submit" style="padding:10px 14px; background:var(--accent); color:#fff; border:none; border-radius:6px; cursor:pointer">Create User</button>
+</form>

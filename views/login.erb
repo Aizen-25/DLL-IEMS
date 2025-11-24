@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Login - IT Inventory</title>
+  <style>
+    :root { --bg: #0b0f14; --card: #0f1720; --muted: #9aa6b2; --accent: #6ad1ff; --danger:#ff6b6b; --text: #e6eef6 }
+    body { 
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; 
+      margin: 0; 
+      background: var(--bg); 
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .login-container {
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .login-header h1 {
+      color: var(--accent);
+      margin: 0 0 8px 0;
+      font-size: 1.8rem;
+    }
+    .login-header p {
+      color: var(--muted);
+      margin: 0;
+      font-size: 0.9rem;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      color: var(--muted);
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font-size: 1rem;
+      box-sizing: border-box;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: rgba(255,255,255,0.08);
+    }
+    .btn-login {
+      width: 100%;
+      padding: 14px;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent);
+      color: #0b0f14;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn-login:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(106, 209, 255, 0.4);
+    }
+    .btn-login:active {
+      transform: translateY(0);
+    }
+    .error-message {
+      background: rgba(255, 107, 107, 0.1);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+    .footer-note {
+      text-align: center;
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-header">
+      <h1>IT Inventory System</h1>
+      <p>Admin Login</p>
+    </div>
+
+    <% if @error %>
+      <div class="error-message">
+        <%= @error %>
+      </div>
+    <% end %>
+
+    <form method="post" action="/login">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input 
+          type="text" 
+          id="username" 
+          name="username" 
+          required 
+          autofocus
+          placeholder="Enter admin username">
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          required
+          placeholder="Enter password">
+      </div>
+
+      <button type="submit" class="btn-login">Login</button>
+    </form>
+
+    <!-- footer-note removed to avoid exposing default credentials -->
+  </div>
+</body>
+</html>

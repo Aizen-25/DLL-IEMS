@@ -1,0 +1,23 @@
+<h2>Audit Trail</h2>
+
+<form method="get" action="/reports/audit">
+  <label>From: <input type="date" name="from"></label>
+  <label>To: <input type="date" name="to"></label>
+  <button type="submit">Filter</button>
+  <button type="submit" name="format" value="csv">Export CSV</button>
+</form>
+
+<table style="width:100%; margin-top:12px;" border="0">
+  <thead><tr><th>When</th><th>Trackable</th><th>Action</th><th>User</th><th>Details</th></tr></thead>
+  <tbody>
+    <% @activities.each do |a| %>
+      <tr>
+        <td><%= a.created_at %></td>
+        <td><%= a.trackable_type %> #<%= a.trackable_id %></td>
+        <td><%= a.action %></td>
+        <td><%= a.user_name %></td>
+        <td><pre style="white-space:pre-wrap"><%= a.changes_made %></pre></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

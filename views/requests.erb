@@ -1,0 +1,244 @@
+<div class="form-card">
+  <h1>List of Deployed Equipment</h1>
+  <% if @temp_password_info %>
+    <div style="margin-top:12px; padding:12px; background:#072d4b; border-left:4px solid #8be9a1; color:#eaf6ff; border-radius:6px;">
+      <div style="font-weight:700">New user account created</div>
+      <div style="margin-top:6px">Username: <strong><%= @temp_password_info['username'] %></strong></div>
+      <div style="margin-top:6px">Temporary password: <code id="temp_pw_text" style="background:#001f2e; padding:6px 8px; border-radius:4px; display:inline-block"><%= @temp_password_info['password'] %></code>
+        <button id="copyTempPw" class="btn-secondary" style="margin-left:8px; padding:6px 8px">Copy</button>
+      </div>
+      <div style="margin-top:6px; color:var(--muted); font-size:13px">This password will not be shown again. Provide it securely to the user and advise them to change it at first login.</div>
+    </div>
+    <script>
+      document.addEventListener('DOMContentLoaded', function(){
+        var btn = document.getElementById('copyTempPw');
+        if(btn){
+          btn.addEventListener('click', function(){
+            var text = document.getElementById('temp_pw_text').innerText;
+            navigator.clipboard && navigator.clipboard.writeText(text).then(function(){
+              btn.innerText = 'Copied';
+              setTimeout(function(){ btn.innerText = 'Copy'; }, 2000);
+            }, function(){ alert('Copy failed. Select and copy the password manually.'); });
+          });
+        }
+      });
+    </script>
+  <% end %>
+  <form id="filter_form" method="get" action="/requests" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;align-items:flex-end">
+    <div style="min-width:220px">
+      <label>Filter by</label>
+      <select id="filter_field" style="width:220px;padding:10px;border-radius:6px">
+        <option value="equipment_name" <%= 'selected' if params['equipment_name'] %>>Equipment name</option>
+        <option value="name" <%= 'selected' if params['name'] %>>Assignee name</option>
+        <option value="serial" <%= 'selected' if params['serial'] %>>Serial no</option>
+        <option value="deployed_date" <%= 'selected' if params['deployed_date'] %>>Date deployed</option>
+        <option value="office" <%= 'selected' if params['office'] %>>Office</option>
+      </select>
+    </div>
+
+    <div style="flex:1;min-width:240px">
+      <label>&nbsp;</label>
+      <input id="filter_query" name="<%= (params['equipment_name'] ? 'equipment_name' : (params['name'] ? 'name' : (params['serial'] ? 'serial' : (params['deployed_date'] ? 'deployed_date' : (params['office'] ? 'office' : 'equipment_name')) ))) %>" value="<%= params['equipment_name'] || params['name'] || params['serial'] || params['deployed_date'] || params['office'] %>" placeholder="Type to search..." style="width:100%;padding:10px;border-radius:6px">
+    </div>
+
+    <div style="display:flex;align-items:end;gap:8px">
+      <a class="btn-secondary" href="/requests">Reset</a>
+      <!-- Pending returns quick filter -->
+      <a class="btn-secondary" href="/requests?filter=pending_return" style="margin-left:8px;background:rgba(255,214,102,0.06);border:1px solid rgba(255,214,102,0.12);color:#ffd166">Pending Returns (<%= @pending_returns_count || 0 %>)</a>
+    </div>
+  </form>
+
+  <div id="deployed_list">
+  <% if @current_loans.any? %>
+    <table style="width:100%">
+      <thead>
+        <tr>
+          <th>Equipment</th>
+          <th>Assignee</th>
+          <th>Office</th>
+          <th>Serial(s)</th>
+          <th>Quantity</th>
+          <th>Checked Out</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @current_loans.each do |r| %>
+          <tr>
+            <td><%= r.equipment ? r.equipment.name : 'Unknown' %><br><small style="color:var(--muted)"><%= r.equipment&.model %></small></td>
+            <td><%= r.requester_name %></td>
+            <td><%# extract office from notes if present %>
+              <% office = nil %>
+              <% if r.notes && r.notes.include?('Deployed to') %>
+                <% m = r.notes.match(/Deployed to ([^;]+)/) %>
+                <% office = m[1].strip if m %>
+              <% end %>
+              <%= office || '—' %>
+            </td>
+            <td style="max-width:280px">
+              <%# try to parse structured serials if present %>
+              <% if r.notes && r.notes.include?('component_serials:') %>
+                <% j = r.notes.match(/component_serials: (\{.*\})/) %>
+                <% if j %>
+                  <% begin %>
+                    <% obj = JSON.parse(j[1]) rescue nil %>
+                    <% if obj %>
+                      <% obj.each_with_index do |unit, idx| %>
+                        <div style="margin-bottom:6px"><strong>Unit <%= idx.to_i+1 %>:</strong>
+                          <% if unit.is_a?(Hash) %>
+                            <% # show serial/component and purchase_date when present %>
+                            <% if unit['component'] %>
+                              <div style="font-size:0.9rem;color:var(--muted)">Component: <%= unit['component'] %></div>
+                            <% end %>
+                            <% if unit['serial'] %>
+                              <div style="font-size:0.9rem;color:var(--muted)">Serial: <%= unit['serial'] %></div>
+                            <% end %>
+                            <% if unit['purchase_date'] %>
+                              <div style="font-size:0.9rem;color:var(--muted)">Purchased: <%= unit['purchase_date'] %></div>
+                            <% end %>
+                            <% if unit['assigned_to'] %>
+                              <div style="font-size:0.9rem;color:var(--muted)">Assigned to: <%= unit['assigned_to'] %></div>
+                            <% end %>
+                          <% else %>
+                            <% unit.each do |comp, val| %>
+                              <div style="font-size:0.9rem;color:var(--muted)"><%= comp %>: <%= val %></div>
+                            <% end %>
+                          <% end %>
+                        </div>
+                      <% end %>
+                    <% end %>
+                  <% rescue => _e %>
+                    <div style="color:var(--muted)">Unable to parse serials</div>
+                  <% end %>
+                <% end %>
+              <% else %>
+                <%# fallback: look for 'serial: ' in notes %>
+                <% if r.notes && r.notes.include?('serial:') %>
+                  <% m = r.notes.match(/serial: ([^;]+)/) %>
+                  <%= m[1] if m %>
+                <% else %>
+                  —
+                <% end %>
+              <% end %>
+            </td>
+            <td><%= r.quantity %></td>
+            <td><%= r.checkout_date %></td>
+            <td>
+              <span style="padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.03)">
+                <%= (r.status.present? ? r.status : (r.equipment&.status || 'unknown')) %>
+              </span>
+            </td>
+            <td>
+              <% if r.status == 'pending_return' %>
+                <span style="padding:6px 8px;border-radius:6px;background:rgba(255,214,102,0.08);font-weight:600;color:#ffd166">Pending Return</span>
+              <% end %>
+              <% if current_user && (current_user.semi_admin? || current_user.super_admin?) %>
+                <% if r.status != 'pending_return' && r.returned_at.nil? %>
+                  <form action="/requests/<%= r.id %>/return" method="post" style="display:inline"><button class="btn-secondary" type="submit">Mark Returned</button></form>
+                <% end %>
+              <% end %>
+
+              <% if current_user && current_user.super_admin? %>
+                <% if r.status == 'pending_return' %>
+                  <form action="/requests/<%= r.id %>/confirm_return" method="post" style="display:inline; margin-left:6px">
+                    <button class="btn-primary" type="submit">Confirm Return</button>
+                  </form>
+                  <form action="/requests/<%= r.id %>/reject_return" method="post" style="display:inline; margin-left:6px">
+                    <button class="btn-secondary" type="submit" style="background:transparent;border:1px solid rgba(255,107,107,0.12);color:var(--danger)">Reject</button>
+                  </form>
+                <% else %>
+                  <button class="btn-secondary" onclick="document.getElementById('status_form_<%= r.id %>').style.display='block'">Change Status</button>
+                <% end %>
+              <% end %>
+              <div id="status_form_<%= r.id %>" style="display:none;margin-top:8px;padding:8px;background:rgba(255,255,255,0.02);border-radius:6px">
+                <form action="/requests/<%= r.id %>/status" method="post">
+                  <div style="display:flex;gap:6px;flex-direction:column">
+                    <select name="new_status">
+                      <option value="working">working</option>
+                      <option value="damaged">damaged</option>
+                      <option value="under repair">under repair</option>
+                    </select>
+                    <textarea name="diagnostic" placeholder="Add diagnostic / to-do note"></textarea>
+                    <div style="display:flex;gap:8px;margin-top:6px">
+                      <button class="btn-primary" type="submit">Save</button>
+                      <button type="button" class="btn-secondary" onclick="document.getElementById('status_form_<%= r.id %>').style.display='none'">Cancel</button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <div style="padding:18px;color:var(--muted)">No deployed equipment found.</div>
+  <% end %>
+  </div>
+</div>
+
+<script>
+  // debounce helper
+  function debounce(fn, wait){
+    var t;
+    return function(){
+      var args = arguments, ctx = this;
+      clearTimeout(t);
+      t = setTimeout(function(){ fn.apply(ctx,args); }, wait);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    var field = document.getElementById('filter_field');
+    var query = document.getElementById('filter_query');
+    var form = document.getElementById('filter_form');
+
+    function setInputName(){
+      var map = { equipment_name: 'equipment_name', name: 'name', serial: 'serial', deployed_date: 'deployed_date', office: 'office' };
+      var selected = field.value;
+      query.name = map[selected] || 'equipment_name';
+      // adjust placeholder and input type for date
+      if(selected === 'deployed_date'){
+        query.placeholder = 'yyyy-mm-dd (press Enter)';
+        query.type = 'date';
+      } else {
+        query.placeholder = 'Type to search...';
+        query.type = 'text';
+      }
+    }
+
+    // submit/filter automatically when typing (debounced) without full reload
+    var controller = null;
+    var fetchResults = debounce(function(){
+      var params = new URLSearchParams();
+      params.set(query.name, query.value || '');
+      // include the selected field explicitly so server-side can also read if needed
+      params.set('filter_field', field.value);
+
+      // abort previous pending request
+      if(controller) controller.abort();
+      controller = new AbortController();
+
+      fetch(form.action + '?' + params.toString(), { signal: controller.signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(resp){ return resp.text(); })
+        .then(function(html){
+          try{
+            var parser = new DOMParser();
+            var doc = parser.parseFromString(html, 'text/html');
+            var newList = doc.getElementById('deployed_list');
+            if(newList){
+              document.getElementById('deployed_list').innerHTML = newList.innerHTML;
+            }
+          } catch(e){ console.error('Failed to update deployed_list', e); }
+        }).catch(function(err){ if(err.name !== 'AbortError') console.error('Filter fetch error', err); });
+    }, 300);
+
+    field.addEventListener('change', function(){ setInputName(); query.focus(); fetchResults(); });
+    query.addEventListener('input', function(){ fetchResults(); });
+    // prevent full form submit (Enter) — perform fetch instead
+    form.addEventListener('submit', function(ev){ ev.preventDefault(); fetchResults(); });
+    // initialize
+    setInputName();
+  });
+</script>

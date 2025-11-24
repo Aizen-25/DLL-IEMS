@@ -1,0 +1,24 @@
+<h2>Depreciation Report</h2>
+
+<form method="get" action="/reports/depreciation">
+  <label>As of: <input type="date" name="as_of" value="<%= Date.today %>"></label>
+  <label>Life (years): <input type="number" name="life_years" value="3" min="1"></label>
+  <button type="submit">Generate</button>
+  <button type="submit" name="format" value="csv">Export CSV</button>
+</form>
+
+<table style="width:100%; margin-top:12px;" border="0">
+  <thead><tr><th>Asset Tag</th><th>Name</th><th>Model</th><th>Purchase Price</th><th>Years</th><th>Book Value</th></tr></thead>
+  <tbody>
+    <% @rows.each do |r| %>
+      <tr>
+        <td><%= r[:equipment].serial_number %></td>
+        <td><%= r[:equipment].name %></td>
+        <td><%= r[:equipment].model %></td>
+        <td>$<%= sprintf('%.2f', r[:purchase_price]) %></td>
+        <td><%= r[:years] %></td>
+        <td>$<%= sprintf('%.2f', r[:book_value]) %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

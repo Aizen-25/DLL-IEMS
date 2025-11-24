@@ -1,0 +1,58 @@
+<h1>Equipment History for <%= @equipment.name %></h1>
+<p style="color:var(--muted)">Serial: <strong><%= @equipment.serial || '—' %></strong> | Brand: <strong><%= @equipment.brand || '—' %></strong></p>
+
+<form method="get" action="/equipments/<%= @equipment.id %>/history" style="display:flex;gap:8px;align-items:end;margin-top:12px">
+  <div>
+    <label>User</label>
+    <select name="user_id">
+      <option value="">Any</option>
+      <% @users.each do |u| %>
+        <option value="<%= u.id %>" <%= 'selected' if params['user_id'].to_s == u.id.to_s %>><%= u.username %></option>
+      <% end %>
+    </select>
+  </div>
+  <div>
+    <label>Serial</label>
+    <input name="serial" value="<%= params['serial'] %>">
+  </div>
+  <div>
+    <label>From</label>
+    <input name="from" type="date" value="<%= params['from'] %>">
+  </div>
+  <div>
+    <label>To</label>
+    <input name="to" type="date" value="<%= params['to'] %>">
+  </div>
+  <div>
+    <button class="btn-primary" type="submit">Filter</button>
+    <a class="btn-secondary" href="/equipments/<%= @equipment.id %>/history">Reset</a>
+  </div>
+</form>
+
+<table style="width:100%;margin-top:14px">
+  <thead>
+    <tr>
+      <th>Occurred</th>
+      <th>Action</th>
+      <th>User</th>
+      <th>Serial</th>
+      <th>Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% if @histories.empty? %>
+      <tr><td colspan="5" style="color:var(--muted);padding:12px">No history entries found for this equipment.</td></tr>
+    <% else %>
+      <% @histories.each do |h| %>
+        <% d = h.details_hash rescue {} %>
+        <tr>
+          <td><%= (h.occurred_at || h.created_at) %></td>
+          <td><%= h.action %></td>
+          <td><%= h.user ? h.user.username : '-' %></td>
+          <td><%= d['serial'] || '-' %></td>
+          <td style="max-width:600px; white-space:pre-wrap"><%= h.details %></td>
+        </tr>
+      <% end %>
+    <% end %>
+  </tbody>
+</table>
