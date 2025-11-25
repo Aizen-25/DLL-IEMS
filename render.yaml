@@ -12,3 +12,10 @@ services:
     envVars:
       - key: RACK_ENV
         value: production
+  - type: job
+    name: dll-iems-migrate
+    env: ruby
+    # Use the migration helper script; this can be run as a one-off or scheduled in Render UI
+    command: bash ./bin/migrate
+    plan: free
+    description: "Run database migrations (one-off job); can be scheduled in Render UI if desired."
