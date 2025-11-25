@@ -1,3 +1,24 @@
+default: &default
+  pool: <%= ENV.fetch('DB_POOL', 5) %>
+
+development:
+  <<: *default
+  adapter: sqlite3
+  database: db/development.sqlite3
+
+test:
+  <<: *default
+  adapter: sqlite3
+  database: db/test.sqlite3
+
+production:
+  <<: *default
+  <% if ENV['DATABASE_URL'] %>
+  url: <%= ENV['DATABASE_URL'] %>
+  <% else %>
+  adapter: sqlite3
+  database: db/production.sqlite3
+  <% end %>
 development:
   adapter: sqlite3
   database: db/development.sqlite3
