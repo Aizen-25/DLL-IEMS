@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: dll-iems
+    env: ruby
+    repo: https://github.com/Aizen-25/DLL-IEMS
+    branch: main
+    buildCommand: bundle install
+    startCommand: bundle exec rackup config.ru -p $PORT
+    envVars:
+      - key: RACK_ENV
+        value: production

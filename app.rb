@@ -17,6 +17,19 @@ require_relative 'models/user_equipment'
 require_relative 'models/equipment_history'
 set :database_file, 'config/database.yml'
 
+# If a DATABASE_URL is provided (Render/Postgres), prefer it for ActiveRecord
+if ENV['DATABASE_URL'] && !ENV['DATABASE_URL'].to_s.strip.empty?
+  begin
+    ActiveRecord::Base.establish_connection(ENV['DATABASE_URL'])
+  rescue => _e
+    # fall back to database.yml if something goes wrong
+  end
+end
+
+# Bind to all interfaces and honor the PORT environment variable (Render sets $PORT)
+set :bind, ENV.fetch('BIND', '0.0.0.0')
+set :port, ENV.fetch('PORT', 4567).to_i
+
 # Enable sessions for login
 enable :sessions
 set :session_secret, ENV['SESSION_SECRET'] || 'inventory_system_secret_key_change_in_production_minimum_64_bytes_required_for_security'
