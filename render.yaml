@@ -5,7 +5,10 @@ services:
     repo: https://github.com/Aizen-25/DLL-IEMS
     branch: main
     buildCommand: bundle install
-    startCommand: bundle exec rackup config.ru -p $PORT
+    # Run migrations on each deploy, then start the app. This keeps the DB schema up-to-date.
+    startCommand: bundle exec rake db:migrate && bundle exec rackup config.ru -p $PORT
+    # Health check path for Render
+    healthCheckPath: /health
     envVars:
       - key: RACK_ENV
         value: production

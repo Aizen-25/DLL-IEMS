@@ -85,6 +85,13 @@ before do
   end
 end
 
+# Health check endpoint for Render / monitoring
+get '/health' do
+  content_type :json
+  status 200
+  { status: 'ok', time: Time.now.utc.iso8601 }.to_json
+end
+
 # Login routes
 get '/login' do
   if logged_in?

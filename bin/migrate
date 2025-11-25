@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+echo "Running DB migrations..."
+bundle exec rake db:migrate
+echo "Migrations complete."
