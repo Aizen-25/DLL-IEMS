@@ -6,7 +6,13 @@ gem 'sinatra'
 gem 'sinatra-activerecord'
 gem 'rake'
 gem 'activerecord', '~> 7.0'
-gem 'sqlite3', '~> 1.4'
+group :development, :test do
+	gem 'sqlite3', '~> 1.4'
+end
+
+group :production do
+	gem 'pg'
+end
 gem 'puma'
 gem 'sinatra-contrib'
 gem 'csv'
