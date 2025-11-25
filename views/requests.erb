@@ -125,9 +125,15 @@
             <td><%= r.quantity %></td>
             <td><%= r.checkout_date %></td>
             <td>
-              <span style="padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.03)">
-                <%= (r.status.present? ? r.status : (r.equipment&.status || 'unknown')) %>
-              </span>
+              <% equipment_status = (r.equipment&.status.presence || r.status.presence || 'unknown') %>
+              <% status_class = case equipment_status.to_s.downcase
+                   when 'deployed' then 'status-deployed'
+                   when 'available' then 'status-available'
+                   when 'maintenance', 'under repair' then 'status-maintenance'
+                   when 'damaged', 'decommissioned' then 'status-decommissioned'
+                   else ''
+                 end %>
+              <span class="status-pill <%= status_class %>"><%= equipment_status %></span>
             </td>
             <td>
               <% if r.status == 'pending_return' %>

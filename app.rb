@@ -367,6 +367,30 @@ post '/requests/:id/status' do
     rq.notes = [rq.notes, note].compact.join(' ; ')
     rq.save! if rq.changed?
 
+    # Also update the equipment's status (this represents the physical item's condition)
+    # Do NOT change the Request lifecycle/status here (that would remove it from deployed lists).
+    begin
+      if rq.equipment
+        eq = rq.equipment
+        prev_status = eq.status
+        # Only update if the status meaningfully changed
+        if prev_status.to_s.downcase != new_status.to_s.downcase
+          eq.status = new_status
+          eq.save!
+          begin
+            Activity.create!(trackable: eq, action: 'status_change', user_name: (current_user && current_user.username) || 'system', changes_made: { from: prev_status, to: new_status, request_id: rq.id, diagnostic: diagnostic }.to_json)
+          rescue => _e
+          end
+          begin
+            EquipmentHistory.create!(equipment: eq, user: current_user, request: rq, action: 'status_change', details: { from: prev_status, to: new_status, diagnostic: diagnostic }.to_json, occurred_at: Time.now)
+          rescue => _e
+          end
+        end
+      end
+    rescue => _e
+      # ignore equipment update failures to avoid breaking the admin flow
+    end
+
     # Create UserEquipment records for each deployed unit so we track per-unit assignment and purchase date
     if defined?(deployed_units) && deployed_units.any?
       deployed_units.each_with_index do |unit, idx|
@@ -1240,6 +1264,13 @@ delete '/equipments/:id' do
   require_super_admin!
   Equipment.find(params[:id]).destroy
   redirect '/equipments'
+end
+
+get '/equipments/delete' do
+  require_super_admin!
+  Equipment.reset_column_information
+  @equipments = Equipment.order(:name)
+  erb :'equipments/delete'
 end
 
 # API endpoints

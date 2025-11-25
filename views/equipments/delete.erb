@@ -1,0 +1,111 @@
+<div style="max-width:700px">
+  <h1 style="color:var(--danger); margin-bottom:8px">Delete Equipment / Asset</h1>
+  <p style="color:var(--muted); margin-bottom:24px">
+    Select an equipment item below to permanently delete it from the inventory. 
+    <strong style="color:#ff9999">This action cannot be undone.</strong>
+  </p>
+
+  <div class="form-card">
+    <form action="" method="post" id="deleteForm" onsubmit="return confirmDelete(event)">
+      <input type="hidden" name="_method" value="DELETE">
+      
+      <div class="field">
+        <label for="equipment_id" class="required">Select Equipment to Delete</label>
+        <select name="equipment_id" id="equipment_id" required onchange="updateFormAction()">
+          <option value="">-- Choose an equipment --</option>
+          <% @equipments.each do |e| %>
+            <option value="<%= e.id %>">
+              <%= e.name %> 
+              <% if e.model && !e.model.strip.empty? %>
+                - <%= e.model %>
+              <% end %>
+              (Qty: <%= e.quantity || 0 %>, Status: <%= e.status || 'N/A' %>)
+            </option>
+          <% end %>
+        </select>
+      </div>
+
+      <div id="equipmentDetails" style="display:none; margin-top:16px; padding:12px; background:rgba(255,107,107,0.08); border:1px solid rgba(255,107,107,0.2); border-radius:6px">
+        <h3 style="color:var(--danger); margin-top:0">⚠️ Confirm Deletion</h3>
+        <p style="color:var(--muted); font-size:0.95rem">
+          You are about to delete <strong id="equipmentName" style="color:#fff"></strong>.
+          This will permanently remove all records of this equipment from the system.
+        </p>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:12px">
+          <input type="checkbox" id="confirmCheck" required style="width:auto">
+          <span style="color:#fff">I understand this action is permanent and cannot be undone</span>
+        </label>
+      </div>
+
+      <div class="form-actions" style="margin-top:20px">
+        <button type="submit" class="btn-primary" style="background:var(--danger)" id="deleteBtn" disabled>
+          Delete Equipment
+        </button>
+        <a href="/equipments" class="btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function updateFormAction() {
+  const select = document.getElementById('equipment_id');
+  const form = document.getElementById('deleteForm');
+  const details = document.getElementById('equipmentDetails');
+  const equipmentName = document.getElementById('equipmentName');
+  const deleteBtn = document.getElementById('deleteBtn');
+  const confirmCheck = document.getElementById('confirmCheck');
+  
+  if (select.value) {
+    // Update form action to point to the specific equipment delete endpoint
+    form.action = '/equipments/' + select.value;
+    
+    // Show selected equipment details
+    const selectedOption = select.options[select.selectedIndex];
+    equipmentName.textContent = selectedOption.text.split(' (Qty:')[0];
+    details.style.display = 'block';
+    
+    // Reset confirmation checkbox
+    confirmCheck.checked = false;
+    deleteBtn.disabled = true;
+  } else {
+    details.style.display = 'none';
+    deleteBtn.disabled = true;
+    form.action = '';
+  }
+}
+
+// Enable delete button only when checkbox is checked
+document.getElementById('confirmCheck')?.addEventListener('change', function() {
+  document.getElementById('deleteBtn').disabled = !this.checked;
+});
+
+function confirmDelete(event) {
+  const select = document.getElementById('equipment_id');
+  const selectedOption = select.options[select.selectedIndex];
+  const equipmentName = selectedOption.text.split(' (Qty:')[0];
+  
+  const confirmed = confirm(
+    'FINAL CONFIRMATION\n\n' +
+    'Are you absolutely sure you want to delete:\n' +
+    equipmentName + '\n\n' +
+    'This action is PERMANENT and cannot be undone.'
+  );
+  
+  if (!confirmed) {
+    event.preventDefault();
+    return false;
+  }
+  
+  return true;
+}
+</script>
+
+<style>
+  select:required:invalid {
+    color: var(--muted);
+  }
+  select:valid {
+    color: #eaf6ff;
+  }
+</style>
