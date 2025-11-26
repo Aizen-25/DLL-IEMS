@@ -1,0 +1,53 @@
+<div class="form-card">
+  <h1>Request Details — #<%= @request.id %></h1>
+  <div style="margin-top:8px">
+    <strong>Requester:</strong> <%= @request.requester_name %>
+  </div>
+  <div style="margin-top:8px">
+    <strong>Equipment:</strong>
+    <% if @request.equipment %>
+      <a href="/equipments/<%= @request.equipment.id %>"><%= @request.equipment.name %></a>
+      <small style="color:var(--muted);"> <%= @request.equipment.model %></small>
+    <% else %>
+      Unknown
+    <% end %>
+  </div>
+  <div style="margin-top:8px">
+    <strong>Quantity:</strong> <%= @request.quantity %>
+  </div>
+  <div style="margin-top:8px">
+    <strong>Checkout Date:</strong> <%= @request.checkout_date %>
+  </div>
+  <div style="margin-top:8px">
+    <strong>Status:</strong> <%= @request.status %>
+  </div>
+  <div style="margin-top:12px">
+    <strong>Notes:</strong>
+    <div style="margin-top:6px; color:var(--muted); white-space:pre-wrap"><%= @request.notes %></div>
+  </div>
+
+  <div style="margin-top:12px">
+    <strong>Assigned Units</strong>
+    <% if @user_equipments.any? %>
+      <table style="width:100%; margin-top:8px">
+        <thead><tr><th>Serial</th><th>User</th><th>Assigned At</th><th>Returned At</th></tr></thead>
+        <tbody>
+          <% @user_equipments.each do |ue| %>
+            <tr>
+              <td><%= ue.serial || '—' %></td>
+              <td><%= ue.user&.username || '—' %></td>
+              <td><%= ue.assigned_at %></td>
+              <td><%= ue.returned_at %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <div style="color:var(--muted); margin-top:6px">No per-unit records found for this request.</div>
+    <% end %>
+  </div>
+
+  <div style="margin-top:18px">
+    <a class="btn-secondary" href="/requests">Back to list</a>
+  </div>
+</div>

@@ -10,6 +10,11 @@
       <a href="/dashboard" style="padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:var(--muted); text-decoration:none; font-size:0.85rem">Clear</a>
     <% end %>
   </form>
+  <!-- Serial search: quick lookup for asset tag / serial -->
+  <div style="display:flex; gap:8px; align-items:center; margin-left:12px">
+    <input id="serial_search" type="search" placeholder="Search serial / asset tag" aria-label="Search serial" style="padding:6px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); color:var(--text); width:280px">
+    <button id="serial_search_btn" type="button" style="padding:6px 10px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer">Search</button>
+  </div>
 </div>
 
 <style>
@@ -31,6 +36,11 @@
   @media (max-width: 900px) {
     .dark-grid .full-on-mobile { grid-column: 1 / -1 }
   }
+  .deployed-serial { cursor:text; display:inline-block; padding:2px 4px; border-radius:4px }
+  .serial-match { border-left:6px solid #FFD600; padding-left:8px; background: linear-gradient(90deg, rgba(255,214,0,0.06), transparent) }
+  #serial_search_results { position:absolute; background:var(--bg); border:1px solid rgba(255,255,255,0.06); padding:8px; border-radius:6px; box-shadow:0 6px 24px rgba(0,0,0,0.6); display:none; z-index:2000; max-width:420px }
+  #serial_search_results .sr_row { padding:6px 8px; border-radius:6px; cursor:pointer }
+  #serial_search_results .sr_row:hover { background:rgba(255,255,255,0.02) }
 </style>
 
 <div class="dark-grid">
@@ -78,7 +88,8 @@
       <div style="margin-left:8px; color:var(--muted); font-size:0.95rem">
         <% if p[:deployed_names] && p[:deployed_names].any? %>
           <% p[:deployed_names].each do |dn| %>
-            <div><%= dn %></div>
+            <%# Wrap each serial/display line so we can highlight it from JS by serial text %>
+            <div><span class="deployed-serial" data-serial="<%= ERB::Util.html_escape(dn.to_s) %>"><%= dn %></span></div>
           <% end %>
         <% else %>
           <div>No deployed details available</div>
@@ -86,6 +97,17 @@
       </div>
     </div>
   <% end %>
+</div>
+
+<!-- Modal: show deployment / assignee details for a serial -->
+<div id="serialDetailModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1200; align-items:center; justify-content:center;">
+  <div style="background:var(--bg); border:1px solid rgba(255,255,255,0.06); padding:18px; border-radius:10px; width:90%; max-width:900px; color:var(--text);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+      <strong id="sdm_title">Serial details</strong>
+      <button id="sdm_close" style="background:transparent; border:none; color:var(--muted); font-size:1.2rem; cursor:pointer">✕</button>
+    </div>
+    <div id="sdm_body" style="max-height:60vh; overflow:auto; font-size:0.95rem; color:var(--text)"></div>
+  </div>
 </div>
 
 <!-- Load local Chart.js vendor copy to ensure offline/blocked environments work -->
@@ -164,4 +186,93 @@
 
   
   // global client-side error capture and debug banner removed
+</script>
+
+<script>
+  (function(){
+    function debounce(fn, wait){ var t; return function(){ var args=arguments; clearTimeout(t); t=setTimeout(function(){ fn.apply(null,args); }, wait); }; }
+
+    var input = document.getElementById('serial_search');
+    var btn = document.getElementById('serial_search_btn');
+    var modal = document.getElementById('serialDetailModal');
+    var modalBody = document.getElementById('sdm_body');
+    var modalTitle = document.getElementById('sdm_title');
+    var modalClose = document.getElementById('sdm_close');
+
+    function clearHighlights(){
+      document.querySelectorAll('.serial-match').forEach(function(el){ el.classList.remove('serial-match'); });
+    }
+
+    function highlightSerialText(q){
+      clearHighlights();
+      if(!q) return;
+      var norm = q.toString().trim();
+      var nodes = document.querySelectorAll('.deployed-serial');
+      nodes.forEach(function(n){
+        try{
+          var txt = n.getAttribute('data-serial') || n.textContent || '';
+          if(txt && txt.toLowerCase().indexOf(norm.toLowerCase()) !== -1){
+            n.classList.add('serial-match');
+            // make clickable: open modal with details when clicked
+            n.style.cursor = 'pointer';
+            n.onclick = function(){ openDetailsForSerial(txt); };
+          } else {
+            n.onclick = null;
+            n.style.cursor = '';
+          }
+        }catch(e){ }
+      });
+    }
+
+    function openDetailsForSerial(serial){
+      modalBody.innerHTML = '<div style="padding:12px">Loading...</div>';
+      modalTitle.textContent = 'Serial: ' + serial;
+      modal.style.display = 'flex';
+      // query serials API to get record(s)
+      fetch('/api/serials?q=' + encodeURIComponent(serial), { credentials: 'same-origin' }).then(function(r){
+        if(!r.ok) throw new Error('not ok');
+        return r.json();
+      }).then(function(json){
+        var html = [];
+        if(json && json.results && json.results.length){
+          json.results.forEach(function(it){
+            if(it.type === 'user_equipment'){
+              html.push('<div style="margin-bottom:8px"><strong>Assigned to:</strong> ' + (it.user_name || 'unknown') + ' (user id: '+ (it.user_id||'') +')');
+              html.push('<div><strong>Equipment:</strong> ' + (it.equipment_name||'') + ' (' + (it.equipment_model||'') + ')</div>');
+              html.push('<div><strong>Assigned:</strong> ' + (it.assigned_at || '') + ' | <strong>Returned:</strong> ' + (it.returned_at || '') + '</div>');
+              if(it.request_id) html.push('<div><a href="/requests/'+it.request_id+'">Open Request #' + it.request_id + '</a></div>');
+              html.push('</div>');
+            } else if(it.type === 'equipment'){
+              html.push('<div style="margin-bottom:8px"><strong>Asset:</strong> ' + (it.equipment_name||'') + ' (' + (it.equipment_model||'') + ')</div>');
+              html.push('<div><strong>Status:</strong> ' + (it.status||'') + ' | <strong>Location:</strong> ' + (it.location||'') + '</div>');
+              html.push('<div><a href="/equipments/'+it.equipment_id+'">Open Equipment</a></div>');
+            } else if(it.type === 'request_note'){
+              html.push('<div style="margin-bottom:8px"><strong>Request:</strong> ' + (it.requester_name||'') + ' (id: '+(it.request_id||'')+')');
+              if(it.equipment_id) html.push('<div><strong>Equipment:</strong> ' + (it.equipment_name||'') + '</div>');
+              if(it.notes) html.push('<div style="margin-top:6px; color:var(--muted)"><pre style="white-space:pre-wrap; font-size:0.9rem">' + (it.notes||'') + '</pre></div>');
+              if(it.request_id) html.push('<div><a href="/requests/'+it.request_id+'">Open Request</a></div>');
+              html.push('</div>');
+            }
+          });
+        } else {
+          html.push('<div>No details found for this serial.</div>');
+        }
+        modalBody.innerHTML = html.join('');
+      }).catch(function(e){
+        modalBody.innerHTML = '<div>Error loading details</div>';
+      });
+    }
+
+    modalClose.addEventListener('click', function(){ modal.style.display = 'none'; });
+    modal.addEventListener('click', function(ev){ if(ev.target === modal) modal.style.display = 'none'; });
+
+    var doSearch = debounce(function(){ var q = input.value && input.value.trim(); if(!q){ clearHighlights(); return; } fetch('/api/serials?q=' + encodeURIComponent(q), { credentials: 'same-origin' }).then(function(res){ if(!res.ok) return []; return res.json(); }).then(function(json){ if(json && json.results && json.results.length){ highlightSerialText(q); } else { clearHighlights(); } }).catch(function(){ clearHighlights(); }); }, 300);
+
+    input.addEventListener('input', doSearch);
+    btn.addEventListener('click', function(){ var q = input.value && input.value.trim(); if(!q) return; highlightSerialText(q); openDetailsForSerial(q); });
+
+    // also press Enter in the input to open details
+    input.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); var q = input.value && input.value.trim(); if(!q) return; highlightSerialText(q); openDetailsForSerial(q); } });
+
+  })();
 </script>

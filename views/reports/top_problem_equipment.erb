@@ -1,0 +1,55 @@
+<div class="form-card">
+  <%= erb :'reports/_header' %>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div></div>
+    <div>
+      <a class="btn-secondary" href="/reports">Back</a>
+      <button class="btn-primary" onclick="window.print();" style="margin-left:8px">Print Report</button>
+      <a class="btn-secondary" href="?<%= URI.encode_www_form(params.merge('format' => 'csv')) %>" style="margin-left:8px">Export CSV</a>
+    </div>
+  </div>
+
+  <div style="margin-bottom:12px">
+    <div class="title">Top Problematic Equipment</div>
+    <div style="color:var(--muted); margin-bottom:8px">Equipment most frequently reported as damaged / under repair / maintenance in the selected period.</div>
+    <canvas id="chart_top_problems" class="chart-canvas" style="height:220px"></canvas>
+  </div>
+
+  <% if @table_rows && @table_rows.any? %>
+    <table>
+      <thead>
+        <tr>
+          <th>Equipment</th>
+          <th>Model</th>
+          <th>Count</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @table_rows.each do |r| %>
+          <tr>
+            <td><%= r[:Equipment] || r['Equipment'] %></td>
+            <td><%= r[:Model] || r['Model'] %></td>
+            <td><%= r[:Count] || r['Count'] %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <div style="color:var(--muted)">No problem reports found in the selected period.</div>
+  <% end %>
+</div>
+
+<script src="/vendor/chart.min.js"></script>
+<script>
+  (function(){
+    var rows = <%= (@table_rows || []).to_json %>;
+    var labels = rows.map(function(r){ return r['Equipment'] || r['Equipment'] });
+    var data = rows.map(function(r){ return r['Count'] || r['Count'] });
+    lazyInit('chart_top_problems', function(){
+      try{
+        var ctx = document.getElementById('chart_top_problems').getContext('2d');
+        new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ data: data, backgroundColor: 'rgba(255,99,132,0.9)' }] }, options: { plugins:{ legend:{display:false} }, scales:{ x:{ ticks:{ color:'#cfeafc' } }, y:{ beginAtZero:true } } } });
+      }catch(e){ console.error(e) }
+    });
+  })();
+</script>

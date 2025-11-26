@@ -1,0 +1,44 @@
+<div class="form-card">
+  <h3>Equipment Repair</h3>
+  <p style="color:var(--muted);margin-top:4px">Equipment currently marked as <strong>Under Repair</strong> or <strong>Damaged</strong>.</p>
+
+  <div style="margin-top:12px">
+    <table>
+      <thead>
+        <tr>
+          <th>Equipment</th>
+          <th>Brand</th>
+          <th>Model</th>
+          <th>Quantity</th>
+          <th>Location</th>
+          <th>Status</th>
+          <th>Last Updated</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if @repairs && @repairs.any? %>
+          <% @repairs.each do |e| %>
+            <tr>
+              <td style="color:#eaf6ff"><%= h(e.name) %></td>
+              <td><%= h(e.brand) %></td>
+              <td><%= h(e.model) %></td>
+              <td><%= (e.quantity || 0) %></td>
+              <td><%= h(e.location) %></td>
+              <td style="color: <%= (e.status.to_s.downcase.include?('damaged') ? 'var(--danger)' : '#f6d365') %>"><%= h(e.status) %></td>
+              <td><%= e.updated_at ? e.updated_at.strftime('%Y-%m-%d %H:%M') : '' %></td>
+              <td style="white-space:nowrap">
+                <a class="btn-secondary" href="/equipments/<%= e.id %>">View</a>
+                <% if current_user && (current_user.semi_admin? || current_user.super_admin?) %>
+                  <a class="btn-primary" href="/equipments/<%= e.id %>/edit" style="margin-left:6px">Edit</a>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        <% else %>
+          <tr><td colspan="8" style="color:var(--muted)">No equipment currently under repair or marked damaged.</td></tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</div>

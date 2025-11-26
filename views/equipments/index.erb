@@ -95,7 +95,10 @@
         <% @equipments.each do |e| %>
           <tr>
             <td><%= e.serial_number %></td>
-            <td><a class="asset-link" href="/equipments/<%= e.id %>"><%= e.name %></a> <div class="muted" style="font-weight:400"> <%= e.model %></div></td>
+            <td>
+              <a class="asset-link equipment-history-link" href="/equipments/<%= e.id %>" data-eid="<%= e.id %>"><%= e.name %></a>
+              <div class="muted" style="font-weight:400"> <%= e.model %></div>
+            </td>
             <td>
               <% status_class = case e.status.to_s.downcase
                  when 'deployed' then 'status-deployed'
@@ -139,6 +142,83 @@
     </table>
   </section>
 </div>
+
+<!-- Equipment history modal -->
+<div id="equipmentHistoryModal" style="display:none; position:fixed; inset:0; align-items:center; justify-content:center; z-index:2000">
+  <div style="width:900px; max-width:96%; max-height:90vh; overflow:auto; background:var(--card); border-radius:8px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,0.6)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 id="eh_name" style="margin:0">Equipment Timeline</h2>
+      <button id="eh_close" class="btn-secondary">Close</button>
+    </div>
+    <div id="eh_meta" style="margin-bottom:12px;color:var(--muted)"></div>
+    <div id="eh_timeline"></div>
+  </div>
+  <div id="eh_backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.45)"></div>
+</div>
+
+<script>
+  function formatDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleString(); }catch(e){ return String(d); } }
+
+  function renderTimeline(data){
+    var container = document.getElementById('eh_timeline');
+    container.innerHTML = '';
+
+    // Merge and sort events by occurred_at / timestamps
+    var events = [];
+    (data.histories||[]).forEach(function(h){ events.push({ when: h.occurred_at || h.created_at, type: 'history', payload: h }); });
+    (data.assignments||[]).forEach(function(a){ events.push({ when: a.assigned_at || a.created_at, type: 'assignment', payload: a }); });
+    (data.requests||[]).forEach(function(r){ events.push({ when: r.approved_at || r.checkout_date || r.created_at, type: 'request', payload: r }); });
+
+    events = events.sort(function(a,b){ var A = new Date(a.when||0).getTime(); var B = new Date(b.when||0).getTime(); return A - B; });
+
+    if(events.length === 0){ container.innerHTML = '<div style="color:var(--muted);padding:12px">No timeline events available</div>'; return; }
+
+    events.forEach(function(ev){
+      var el = document.createElement('div');
+      el.style.padding = '10px 12px';
+      el.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
+      var time = formatDate(ev.when);
+      if(ev.type === 'history'){
+        var h = ev.payload;
+        var details = (typeof h.details === 'object') ? JSON.stringify(h.details) : h.details;
+        el.innerHTML = '<div style="font-weight:700">'+ (h.action || 'history') + ' <span style="color:var(--muted);font-weight:400">@ '+ time +'</span></div>' +
+                       '<div style="color:var(--muted);margin-top:6px">'+ (Array.isArray(details) ? details.join(', ') : (details || '')) +'</div>';
+      } else if(ev.type === 'assignment'){
+        var a = ev.payload;
+        el.innerHTML = '<div style="font-weight:700">Assigned to ' + (a.user_name || a.user_id || 'unknown') + ' <span style="color:var(--muted);font-weight:400">@ '+ time +'</span></div>' +
+                       '<div style="color:var(--muted);margin-top:6px">Serial: ' + (a.serial || '—') + ' — Returned: ' + (a.returned_at ? formatDate(a.returned_at) : 'no') + '</div>';
+      } else if(ev.type === 'request'){
+        var r = ev.payload;
+        el.innerHTML = '<div style="font-weight:700">Request #' + r.id + ' ('+ (r.status || '') +') <span style="color:var(--muted);font-weight:400">@ '+ time +'</span></div>' +
+                       '<div style="color:var(--muted);margin-top:6px">By: ' + (r.requester_name || '—') + ' — Qty: ' + (r.quantity||'—') + '</div>';
+      }
+      container.appendChild(el);
+    });
+  }
+
+  function showEquipmentModal(id){
+    fetch('/api/equipments/'+id+'/history', { headers: { 'Accept': 'application/json' } })
+      .then(function(r){ if(!r.ok) throw new Error('failed'); return r.json(); })
+      .then(function(data){
+        document.getElementById('eh_name').innerText = data.equipment.name + ' — Timeline';
+        document.getElementById('eh_meta').innerText = 'Model: ' + (data.equipment.model||'—') + ' • Serial: ' + (data.equipment.serial_number||'—') + ' • Status: ' + (data.equipment.status||'—');
+        renderTimeline(data);
+        var m = document.getElementById('equipmentHistoryModal');
+        m.style.display='flex';
+      }).catch(function(err){ alert('Failed to load equipment history'); });
+  }
+
+  document.addEventListener('click', function(ev){
+    var t = ev.target.closest('.equipment-history-link');
+    if(t){ ev.preventDefault(); var id = t.getAttribute('data-eid'); showEquipmentModal(id); }
+    if(ev.target.id === 'eh_close' || ev.target.id === 'eh_backdrop'){
+      document.getElementById('equipmentHistoryModal').style.display='none';
+    }
+  });
+
+  // close when clicking backdrop
+  document.getElementById('eh_backdrop')?.addEventListener('click', function(){ document.getElementById('equipmentHistoryModal').style.display='none'; });
+</script>
 
 <!-- DataTables and jQuery from CDN -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">

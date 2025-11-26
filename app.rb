@@ -9,6 +9,7 @@ end
 require 'json'
 require 'csv'
 require 'securerandom'
+require 'uri'
 require_relative 'models/equipment'
 require_relative 'models/request'
 require_relative 'models/activity'
@@ -65,6 +66,11 @@ helpers do
 
   def current_user
     @current_user ||= User.find_by(id: session[:user_id])
+  end
+  
+  # HTML-escape helper for views (`h` is a common helper in ERB)
+  def h(text)
+    ERB::Util.html_escape(text.to_s)
   end
 end
 
@@ -324,6 +330,7 @@ get '/requests' do
   equipment_q = params['equipment_name']
   serial_q = params['serial']
   deployed_date_q = params['deployed_date']
+  category_q = params['category']
 
   @pending_requests = Request.pending.order(created_at: :desc)
 
@@ -334,6 +341,7 @@ get '/requests' do
     loans = Request.approved.where(returned_at: nil)
   end
   loans = loans.joins(:equipment).where('equipments.name LIKE ?', "%#{equipment_q}%") if equipment_q && !equipment_q.strip.empty?
+  loans = loans.joins(:equipment).where('equipments.category = ?', category_q) if category_q && !category_q.strip.empty?
   loans = loans.where('requests.requester_name LIKE ?', "%#{name_q}%") if name_q && !name_q.strip.empty?
   loans = loans.where('requests.notes LIKE ?', "%#{office_q}%") if office_q && !office_q.strip.empty?
   loans = loans.where('requests.notes LIKE ?', "%#{serial_q}%") if serial_q && !serial_q.strip.empty?
@@ -345,10 +353,30 @@ get '/requests' do
     end
   end
 
-  @current_loans = loans.order(checkout_date: :desc)
+  # Pagination: show 7 entries per page for deployed list
+  per_page = 7
+  page = (params['page'] || '1').to_i
+  page = 1 if page < 1
+  total_count = loans.count
+  total_pages = (total_count / per_page.to_f).ceil
+  offset = (page - 1) * per_page
+  @page = page
+  @total_pages = total_pages
+  @total_loans = total_count
+  @current_loans = loans.order(checkout_date: :desc).offset(offset).limit(per_page)
   # one-time temp password info (set after deploy auto-create or force-reset)
+  @categories = Equipment.distinct.pluck(:category).compact
   @temp_password_info = session.delete(:temp_password_for_user)
   erb :'requests'
+end
+
+# Show a single request (deployment/loan) details
+get '/requests/:id' do
+  @request = Request.find_by(id: params[:id])
+  halt 404, "Request not found" unless @request
+  # load associated user equipments for this request
+  @user_equipments = UserEquipment.where(request_id: @request.id)
+  erb :'requests_show'
 end
 
 post '/requests/:id/status' do
@@ -700,7 +728,418 @@ post '/password_change' do
 end
 
 get '/reports' do
-  erb :'reports'
+  # the reports index will render available reports and a filter
+  erb :'reports/index'
+end
+
+# Helper to parse date range params (from/to/year)
+def parse_date_range(params)
+  from = params['from'] ? (Date.parse(params['from']) rescue nil) : nil
+  to = params['to'] ? (Date.parse(params['to']) rescue nil) : nil
+  if params['year'] && !params['year'].to_s.strip.empty?
+    y = params['year'].to_i
+    from ||= Date.new(y,1,1) rescue nil
+    to ||= Date.new(y,12,31) rescue nil
+  end
+  return from, to
+end
+
+# Report: deployed by category
+get '/reports/deployed_by_category' do
+  from, to = parse_date_range(params)
+  @report_title = 'Deployed by Category'
+  @report_as_of = to || Date.today
+  @report_filter_label = from && to ? "#{from} to #{to}" : (params['year'] ? params['year'] : 'All')
+
+  scope = Request.where(status: 'approved')
+  scope = scope.where('approved_at >= ?', from.beginning_of_day) if from
+  scope = scope.where('approved_at <= ?', to.end_of_day) if to
+  raw = scope.joins(:equipment).group('equipments.category').sum(:quantity)
+  @table_columns = ['Category','Count']
+  @table_rows = raw.map { |cat,cnt| { 'Category': (cat || 'Uncategorized'), 'Count': cnt } }
+
+  if params['format'] == 'csv'
+    content_type 'text/csv'
+    attachment "deployed_by_category_#{@report_as_of}.csv"
+    csv = CSV.generate do |csv|
+      csv << @table_columns
+      @table_rows.each { |r| csv << [r[:Category], r[:Count]] }
+    end
+    body csv
+  else
+    erb :'reports/show'
+  end
+end
+
+# Interactive analytics page: three filterable charts
+get '/reports/analytics' do
+  from, to = parse_date_range(params)
+  @report_title = 'Interactive Analytics'
+  @report_as_of = to || Date.today
+  @report_filter_label = from && to ? "#{from} to #{to}" : (params['year'] ? params['year'] : 'All')
+
+  # Deployed by category (approved, not returned within range)
+  deployed_scope = Request.where(status: 'approved')
+  deployed_scope = deployed_scope.where('approved_at >= ?', from.beginning_of_day) if from
+  deployed_scope = deployed_scope.where('approved_at <= ?', to.end_of_day) if to
+  @deployed_by_category = deployed_scope.joins(:equipment).group('equipments.category').sum(:quantity)
+
+  # Equipment distribution by category (inventory counts)
+  # Sum quantities per equipment category (use 0 when NULL)
+  begin
+    @equipment_by_category = Equipment.group(:category).sum(:quantity)
+  rescue => _e
+    @equipment_by_category = {}
+  end
+
+  # Office distribution (Deployed location parsed from notes)
+  deployed_loc_counts = Hash.new(0)
+  deployed_scope.find_each do |rq|
+    loc = nil
+    if rq.notes && rq.notes.match(/Deployed to\s*([^;\n]+)/i)
+      loc = rq.notes.match(/Deployed to\s*([^;\n]+)/i)[1].to_s.strip
+    end
+    # If a category filter is provided, skip requests for other categories
+    if params['category'] && !params['category'].to_s.strip.empty?
+      begin
+        eq_cat = rq.equipment && rq.equipment.category
+        next unless eq_cat && eq_cat.to_s == params['category'].to_s
+      rescue => _e
+      end
+    end
+    loc ||= (rq.equipment && rq.equipment.location)
+    loc = (loc.nil? || loc.to_s.strip.empty?) ? 'Unspecified' : loc.to_s
+    deployed_loc_counts[loc] += (rq.quantity || 1)
+  end
+  @office_distribution = deployed_loc_counts
+
+  # Request status counts for analytics (summary of request lifecycle statuses)
+  begin
+    @request_status_counts = Request.group(:status).count.transform_keys { |k| k || 'Unspecified' }
+  rescue => _e
+    @request_status_counts = {}
+  end
+
+  # Equipment condition counts (working / under repair / damaged etc.) for analytics
+  begin
+    @equipment_status_counts = Equipment.group(:status).count.transform_keys { |k| k || 'Unspecified' }
+  rescue => _e
+    @equipment_status_counts = {}
+  end
+
+  # Status over time: aggregate EquipmentHistory status_change counts by month
+  q = EquipmentHistory.where(action: 'status_change')
+  q = q.where('occurred_at >= ?', from.beginning_of_day) if from
+  q = q.where('occurred_at <= ?', to.end_of_day) if to
+  status_by_month = Hash.new { |h,k| h[k] = Hash.new(0) }
+  q.find_each do |h|
+    d = (h.occurred_at || h.created_at).to_date rescue nil
+    next unless d
+    m = d.strftime('%Y-%m')
+    details = (begin; JSON.parse(h.details) rescue {}; end)
+    new_status = (details['to'] || details['status'] || details['new_status'] || 'unknown')
+    status_by_month[m][new_status] += 1
+  end
+  @status_by_month = status_by_month
+
+  # Problematic brands: count status_change events where new status indicates problems
+  begin
+    problem_statuses = ['maintenance','under repair','damaged','repair']
+    brand_counts = Hash.new(0)
+    q2 = EquipmentHistory.where(action: 'status_change')
+    q2 = q2.where('occurred_at >= ?', from.beginning_of_day) if from
+    q2 = q2.where('occurred_at <= ?', to.end_of_day) if to
+    q2.find_each do |h|
+      begin
+        details = (JSON.parse(h.details) rescue {})
+        new_status = (details['to'] || details['status'] || details['new_status'] || '').to_s.downcase
+        next unless new_status && problem_statuses.include?(new_status)
+        # prefer associated equipment brand
+        if h.respond_to?(:equipment) && h.equipment && h.equipment.respond_to?(:brand)
+          brand = h.equipment.brand.to_s.strip
+        else
+          # try to look up equipment by id
+          brand = ''
+          if h.equipment_id
+            eq = Equipment.find_by(id: h.equipment_id)
+            brand = (eq&.brand || '').to_s.strip
+          end
+        end
+        brand = 'Unknown' if brand.nil? || brand.to_s.strip.empty?
+        brand_counts[brand] += 1
+      rescue => _e
+      end
+    end
+    # sort descending and keep as ordered hash
+    @problem_brands = brand_counts.sort_by { |_,c| -c }.to_h
+  rescue => _e
+    @problem_brands = {}
+  end
+
+  erb :'reports/analytics'
+end
+
+# Equipment Repair listing: show equipments currently marked under repair or damaged
+get '/repairs' do
+  # show equipments whose status indicates a problem
+  problem_statuses = ['under repair','damaged','repair','maintenance']
+  begin
+    @repairs = Equipment.where(status: problem_statuses).order(updated_at: :desc)
+  rescue => _e
+    # fallback: safe empty array
+    @repairs = []
+  end
+
+  erb :'repairs'
+end
+
+# Report: office distribution (deployed locations) - HTML table or CSV
+get '/reports/office_distribution' do
+  from, to = parse_date_range(params)
+  @report_title = 'Office Distribution'
+  @report_as_of = to || Date.today
+  @report_filter_label = from && to ? "#{from} to #{to}" : (params['year'] ? params['year'] : 'All')
+
+  deployed_scope = Request.where(status: 'approved')
+  deployed_scope = deployed_scope.where('approved_at >= ?', from.beginning_of_day) if from
+  deployed_scope = deployed_scope.where('approved_at <= ?', to.end_of_day) if to
+
+  deployed_loc_counts = Hash.new(0)
+  deployed_scope.find_each do |rq|
+    loc = nil
+    if rq.notes && rq.notes.match(/Deployed to\s*([^;\n]+)/i)
+      loc = rq.notes.match(/Deployed to\s*([^;\n]+)/i)[1].to_s.strip
+    end
+    # Apply optional category filter (matches equipment.category)
+    if params['category'] && !params['category'].to_s.strip.empty?
+      begin
+        eq_cat = rq.equipment && rq.equipment.category
+        next unless eq_cat && eq_cat.to_s == params['category'].to_s
+      rescue => _e
+      end
+    end
+    loc ||= (rq.equipment && rq.equipment.location)
+    loc = (loc.nil? || loc.to_s.strip.empty?) ? 'Unspecified' : loc.to_s
+    deployed_loc_counts[loc] += (rq.quantity || 1)
+  end
+
+  @table_columns = ['Location','Count']
+  @table_rows = deployed_loc_counts.map { |loc,c| { 'Location': loc, 'Count': c } }.sort_by { |r| -r[:Count] }
+
+  if params['format'] == 'csv'
+    content_type 'text/csv'
+    attachment "office_distribution_#{@report_as_of}.csv"
+    csv = CSV.generate do |csv_out|
+      csv_out << @table_columns
+      @table_rows.each { |r| csv_out << [r[:Location], r[:Count]] }
+    end
+    body csv
+  elsif params['format'] == 'json' || request.xhr?
+    content_type :json
+    # return a simple hash of location => count
+    deployed_loc_counts.to_json
+  else
+    erb :'reports/show'
+  end
+end
+
+# Report: Top problematic equipment (most frequently reported damaged/under repair)
+get '/reports/top_problem_equipment' do
+  from, to = parse_date_range(params)
+  @report_title = 'Top Problematic Equipment'
+  @report_as_of = to || Date.today
+  @report_filter_label = from && to ? "#{from} to #{to}" : (params['year'] ? params['year'] : 'All')
+
+  problem_statuses = ['maintenance', 'under repair', 'damaged']
+
+  q = EquipmentHistory.where(action: 'status_change')
+  q = q.where('occurred_at >= ?', from.beginning_of_day) if from
+  q = q.where('occurred_at <= ?', to.end_of_day) if to
+
+  counts = Hash.new(0)
+  q.find_each do |h|
+    begin
+      details = (JSON.parse(h.details) rescue {})
+      new_status = (details['to'] || details['status'] || details['new_status']).to_s.downcase
+      if new_status && problem_statuses.include?(new_status)
+        if h.equipment_id
+          counts[h.equipment_id] += 1
+        elsif h.equipment
+          counts[h.equipment.id] += 1
+        end
+      end
+    rescue => _e
+    end
+  end
+
+  rows = counts.map do |eq_id, cnt|
+    eq = Equipment.find_by(id: eq_id)
+    { equipment_id: eq_id, name: (eq ? eq.name : "Unknown (#{eq_id})"), model: (eq&.model || ''), count: cnt }
+  end.sort_by { |r| -r[:count] }
+
+  @table_columns = ['Equipment','Model','Count']
+  @table_rows = rows.map { |r| { 'Equipment': r[:name], 'Model': r[:model], 'Count': r[:count] } }
+
+  if params['format'] == 'csv'
+    content_type 'text/csv'
+    attachment "top_problem_equipment_#{@report_as_of}.csv"
+    csv = CSV.generate do |csv_out|
+      csv_out << @table_columns
+      @table_rows.each { |r| csv_out << [r[:Equipment], r[:Model], r[:Count]] }
+    end
+    body csv
+  else
+    erb :'reports/top_problem_equipment'
+  end
+end
+
+# Report: top assignees
+get '/reports/top_assignees' do
+  from, to = parse_date_range(params)
+  @report_title = 'Top Assignees'
+  @report_as_of = to || Date.today
+  @report_filter_label = from && to ? "#{from} to #{to}" : (params['year'] ? params['year'] : 'All')
+
+  scope = Request.where(status: 'approved')
+  scope = scope.where('approved_at >= ?', from.beginning_of_day) if from
+  scope = scope.where('approved_at <= ?', to.end_of_day) if to
+  rows = scope.group(:requester_name).sum(:quantity)
+  @table_columns = ['Assignee','Count']
+  @table_rows = rows.map { |name,cnt| { 'Assignee': name, 'Count': cnt } }
+
+  if params['format'] == 'csv'
+    content_type 'text/csv'
+    attachment "top_assignees_#{@report_as_of}.csv"
+    csv = CSV.generate do |csv|
+      csv << @table_columns
+      @table_rows.each { |r| csv << [r[:Assignee], r[:Count]] }
+    end
+    body csv
+  else
+    erb :'reports/show'
+  end
+end
+
+# Report: average deployment duration
+get '/reports/avg_deployment_duration' do
+  from, to = parse_date_range(params)
+  @report_title = 'Average Deployment Duration (days)'
+  @report_as_of = to || Date.today
+  @report_filter_label = from && to ? "#{from} to #{to}" : (params['year'] ? params['year'] : 'All')
+
+  scope = Request.where(status: 'returned')
+  scope = scope.where('returned_at IS NOT NULL AND checkout_date IS NOT NULL')
+  scope = scope.where('checkout_date >= ?', from) if from
+  scope = scope.where('returned_at <= ?', to) if to
+  durations = scope.map { |r| (r.returned_at - r.checkout_date).to_i rescue nil }.compact
+  avg = durations.any? ? (durations.sum.to_f / durations.size).round(1) : 0
+  @table_columns = ['Metric','Value']
+  @table_rows = [{ 'Metric': 'Average Days', 'Value': avg }, { 'Metric': 'Count Samples', 'Value': durations.size }]
+
+  if params['format'] == 'csv'
+    content_type 'text/csv'
+    attachment "avg_deployment_duration_#{@report_as_of}.csv"
+    csv = CSV.generate do |csv|
+      csv << @table_columns
+      @table_rows.each { |r| csv << [r[:Metric], r[:Value]] }
+    end
+    body csv
+  else
+    erb :'reports/show'
+  end
+end
+
+# Report: warranty expiring
+get '/reports/warranty_expiring' do
+  from, to = parse_date_range(params)
+  @report_title = 'Warranty Expiring'
+  @report_as_of = to || Date.today
+  @report_filter_label = from && to ? "#{from} to #{to}" : (params['year'] ? params['year'] : 'Next 90 days')
+
+  # default to 90 days if no range
+  if from.nil? && to.nil?
+    from = Date.today
+    to = Date.today + 90
+  end
+
+  eqs = Equipment.where('warranty_until IS NOT NULL')
+  eqs = eqs.where('warranty_until >= ? AND warranty_until <= ?', from, to)
+  @table_columns = ['Asset Tag','Name','Model','Warranty Until']
+  @table_rows = eqs.map { |e| { 'Asset Tag': e.serial_number || '', 'Name': e.name, 'Model': e.model, 'Warranty Until': (e.warranty_until || '') } }
+
+  if params['format'] == 'csv'
+    content_type 'text/csv'
+    attachment "warranty_expiring_#{@report_as_of}.csv"
+    csv = CSV.generate do |csv|
+      csv << @table_columns
+      @table_rows.each { |r| csv << [r[:'Asset Tag'], r[:Name], r[:Model], r[:'Warranty Until']] }
+    end
+    body csv
+  else
+    erb :'reports/show'
+  end
+end
+
+# Report: status changes over time (uses EquipmentHistory)
+get '/reports/status_over_time' do
+  from, to = parse_date_range(params)
+  @report_title = 'Status Changes Over Time'
+  @report_as_of = to || Date.today
+  @report_filter_label = from && to ? "#{from} to #{to}" : (params['year'] ? params['year'] : 'All')
+
+  q = EquipmentHistory.where(action: 'status_change')
+  q = q.where('occurred_at >= ?', from.beginning_of_day) if from
+  q = q.where('occurred_at <= ?', to.end_of_day) if to
+  # group by date and status
+  rows = q.map do |h|
+    d = (h.occurred_at || h.created_at).to_date rescue nil
+    details = (begin; JSON.parse(h.details) rescue {}; end)
+    new_status = (details['to'] || details['status'] || details['new_status'])
+    { date: d, status: new_status }
+  end.compact
+  summary = {}
+  rows.each do |r|
+    key = [r[:date].to_s, r[:status].to_s]
+    summary[key] = (summary[key] || 0) + 1
+  end
+  @table_columns = ['Date','Status','Count']
+  @table_rows = summary.map { |(date,status),cnt| { 'Date': date, 'Status': status, 'Count': cnt } }.sort_by { |r| [r[:Date].to_s, r[:Status].to_s] }
+
+  if params['format'] == 'csv'
+    content_type 'text/csv'
+    attachment "status_over_time_#{@report_as_of}.csv"
+    csv = CSV.generate do |csv|
+      csv << @table_columns
+      @table_rows.each { |r| csv << [r[:Date], r[:Status], r[:Count]] }
+    end
+    body csv
+  else
+    erb :'reports/show'
+  end
+end
+
+# Report: assets by location
+get '/reports/assets_by_location' do
+  from, to = parse_date_range(params)
+  @report_title = 'Assets by Location'
+  @report_as_of = to || Date.today
+  @report_filter_label = from && to ? "#{from} to #{to}" : (params['year'] ? params['year'] : 'All')
+
+  rows = Equipment.group(:location).count
+  @table_columns = ['Location','Count']
+  @table_rows = rows.map { |loc,c| { 'Location': (loc || 'Unspecified'), 'Count': c } }
+
+  if params['format'] == 'csv'
+    content_type 'text/csv'
+    attachment "assets_by_location_#{@report_as_of}.csv"
+    csv = CSV.generate do |csv|
+      csv << @table_columns
+      @table_rows.each { |r| csv << [r[:Location], r[:Count]] }
+    end
+    body csv
+  else
+    erb :'reports/show'
+  end
 end
 
 # Report: brands-by-category with high problem/under-repair rates
@@ -1279,7 +1718,143 @@ get '/api/equipments' do
   Equipment.all.to_json
 end
 
+# API: search serial numbers / asset tags across UserEquipment, Equipment and Requests
+get '/api/serials' do
+  require_login!
+  content_type :json
+  q = params['q']&.to_s&.strip
+  halt 400, { error: 'missing_query' }.to_json if q.nil? || q.empty?
+
+  matches = []
+
+  # search user-assigned units first (per-serial accuracy)
+  begin
+    ue_q = UserEquipment.where('serial LIKE ?', "%#{q}%").limit(50)
+    ue_q.find_each do |ue|
+      matches << {
+        type: 'user_equipment',
+        serial: ue.serial,
+        equipment_id: ue.equipment_id,
+        equipment_name: ue.equipment&.name,
+        equipment_model: ue.equipment&.model,
+        user_id: ue.user_id,
+        user_name: ue.user&.username,
+        request_id: ue.request_id,
+        assigned_at: ue.assigned_at,
+        returned_at: ue.returned_at,
+        active: ue.active
+      }
+    end
+  rescue => _e
+  end
+
+  # search master equipment serial_number (asset tag)
+  begin
+    Equipment.where('serial_number LIKE ?', "%#{q}%").limit(50).find_each do |eq|
+      matches << {
+        type: 'equipment',
+        serial: eq.serial_number,
+        equipment_id: eq.id,
+        equipment_name: eq.name,
+        equipment_model: eq.model,
+        status: eq.status,
+        location: eq.location
+      }
+    end
+  rescue => _e
+  end
+
+  # also search requests notes for embedded serials (best-effort)
+  begin
+    Request.where('notes LIKE ?', "%#{q}%").limit(50).find_each do |r|
+      # try to extract serial lines from notes
+      s = nil
+      if r.notes && r.notes.match(/serial:\s*([^;\n]+)/i)
+        s = r.notes.match(/serial:\s*([^;\n]+)/i)[1].to_s.strip
+      end
+      matches << {
+        type: 'request_note',
+        serial: s || q,
+        request_id: r.id,
+        equipment_id: r.equipment_id,
+        equipment_name: r.equipment&.name,
+        requester_name: r.requester_name,
+        notes: r.notes,
+        checkout_date: r.checkout_date,
+        approved_at: r.approved_at,
+        returned_at: r.returned_at
+      }
+    end
+  rescue => _e
+  end
+
+  # de-duplicate by serial+type+request/equipment
+  uniq = {}
+  filtered = []
+  matches.each do |m|
+    key = [m[:type], m[:serial].to_s, m[:equipment_id].to_s, m[:request_id].to_s].join('::')
+    next if uniq[key]
+    uniq[key] = true
+    filtered << m
+  end
+
+  { q: q, results: filtered }.to_json
+end
+
 get '/api/equipments/:id' do
   content_type :json
   Equipment.find(params[:id]).to_json
+end
+
+# API: equipment full timeline (history + user assignments + requests)
+get '/api/equipments/:id/history' do
+  require_login!
+  content_type :json
+  eq = Equipment.find_by(id: params[:id])
+  halt 404, { error: 'not_found' }.to_json unless eq
+
+  histories = EquipmentHistory.where(equipment_id: eq.id).order(:occurred_at).map do |h|
+    {
+      id: h.id,
+      action: h.action,
+      details: (begin; JSON.parse(h.details) rescue h.details; end),
+      user_id: h.user_id,
+      user_name: h.user&.username,
+      request_id: h.request_id,
+      occurred_at: h.occurred_at
+    }
+  end
+
+  user_eqs = UserEquipment.where(equipment_id: eq.id).order(:assigned_at).map do |ue|
+    {
+      id: ue.id,
+      user_id: ue.user_id,
+      user_name: ue.user&.username,
+      serial: ue.serial,
+      assigned_at: ue.assigned_at,
+      returned_at: ue.returned_at,
+      active: ue.active,
+      request_id: ue.request_id
+    }
+  end
+
+  reqs = Request.where(equipment_id: eq.id).order(:created_at).map do |r|
+    {
+      id: r.id,
+      status: r.status,
+      requester_name: r.requester_name,
+      quantity: r.quantity,
+      checkout_date: r.checkout_date,
+      approved_at: r.approved_at,
+      returned_at: r.returned_at,
+      notes: r.notes
+    }
+  end
+
+  {
+    equipment: eq.attributes.slice('id','name','model','serial_number','status','location','category','quantity','created_at','updated_at','notes','brand'),
+    histories: histories,
+    assignments: user_eqs,
+    requests: reqs
+  }.to_json
 end

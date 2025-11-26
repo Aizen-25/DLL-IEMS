@@ -1,0 +1,37 @@
+<div class="form-card">
+  <%= erb :'reports/_header' %>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div></div>
+    <div>
+      <a class="btn-secondary" href="/reports">Back</a>
+      <button class="btn-primary" onclick="window.print();" style="margin-left:8px">Print Report</button>
+      <a class="btn-secondary" href="?<%= URI.encode_www_form(params.merge('format' => 'csv')) %>" style="margin-left:8px">Export CSV</a>
+    </div>
+  </div>
+
+  <div>
+    <% if defined?(@table_columns) && @table_columns && @table_rows %>
+      <table style="width:100%">
+        <thead>
+          <tr>
+            <% @table_columns.each do |c| %>
+              <th><%= c %></th>
+            <% end %>
+          </tr>
+        </thead>
+        <tbody>
+          <% @table_rows.each do |row| %>
+            <tr>
+              <% @table_columns.each do |c| %>
+                <td><%= row[c.to_sym] || row[c] || '—' %></td>
+              <% end %>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <div style="color:var(--muted)">No data available for the selected filter.</div>
+    <% end %>
+  </div>
+</div>

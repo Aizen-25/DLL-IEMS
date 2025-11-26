@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>IT Inventory</title>
     <style>
-      :root { --bg: #0b0f14; --card: #0f1720; --muted: #9aa6b2; --accent: #6ad1ff; --accent-2: #8ef78e; --primary: #9eea6a; --danger:#ff6b6b }
+      :root { --bg: #0b0f14; --card: #0f1720; --muted: #9aa6b2; --accent: #6ad1ff; --accent-2: #8ef78e; --primary: #9eea6a; --danger:#ff6b6b; --cta: #28a745 }
+      html, body { width:100%; height:100%; overflow-x: hidden; }
       body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 0; background:var(--bg); color:#e6eef6 }
-      .app { display:flex; min-height:100vh }
+      .app { display:flex; min-height:100vh; overflow-x: hidden }
       .sidebar { width:260px; background:linear-gradient(180deg,#07101a 0%, #0f1720 100%); color:#fff; padding:18px; box-sizing:border-box; position:relative }
       .sidebar h2 { margin:0 0 12px 0; font-size:1.1rem }
       .nav { list-style:none; padding:0; margin:12px 0 }
@@ -15,9 +16,9 @@
       .nav a { text-decoration:none; color:#cfeafc; display:flex; gap:10px; align-items:center; padding:8px; border-radius:6px }
       .nav a:hover { background: rgba(255,255,255,0.03) }
       .nav .icon { width:28px; text-align:center }
-      .main { flex:1; padding:24px; box-sizing:border-box }
+      .main { flex:1; padding:24px; box-sizing:border-box; overflow-x: hidden }
       .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px }
-      .container { max-width:1200px; margin:0 auto }
+      .container { max-width:1200px; margin:0 auto; box-sizing: border-box }
       /* Responsive: overlay sidebar on small screens */
       @media (max-width: 820px) {
         .app { flex-direction:column }
@@ -62,6 +63,22 @@
 
       .form-actions { display:flex; gap:12px; margin-top:14px }
       .btn-primary { background:var(--primary); color:#07101a; padding:10px 18px; border-radius:8px; font-weight:600; border: none }
+      /* Call-to-action button: visually prominent for actions like Confirm/Return */
+      .btn-cta {
+        background: var(--cta);
+        color: #07101a;
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-weight: 700;
+        border: none;
+        box-shadow: 0 6px 18px rgba(255,209,102,0.12);
+        transition: transform 120ms ease, box-shadow 120ms ease;
+      }
+      .btn-cta:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(255,209,102,0.18); }
+      .btn-icon { display:inline-block; width:18px; text-align:center; margin-right:8px; font-size:14px; line-height:1 }
+      /* Layout for action buttons to prevent accidental misclicks */
+      .action-buttons { display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+      .action-buttons .btn-cta, .action-buttons .btn-secondary, .action-buttons form { margin: 0 }
       .btn-secondary { background:transparent; color:var(--muted); padding:10px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.04) }
 
       .flash { background: linear-gradient(90deg, rgba(154,234,106,0.12), rgba(138,200,255,0.06)); padding:12px; border-radius:8px; color: #dff8c6; margin-bottom:14px }
@@ -97,7 +114,9 @@
           <% if current_user && current_user.super_admin? %>
             <li><a href="/equipment_histories"><span class="icon">🧾</span><span>Equipment History / Tracks</span></a></li>
           <% end %>
-          <li><a href="/reports"><span class="icon">📊</span><span>Reports & Analytics</span></a></li>
+          <li><a href="/reports"><span class="icon">📄</span><span>Reports</span></a></li>
+          <li><a href="/reports/analytics"><span class="icon">📊</span><span>Analytics</span></a></li>
+          <li><a href="/repairs"><span class="icon">🔧</span><span>Equipment Repair</span></a></li>
           <li><a href="/settings"><span class="icon">⚙️</span><span>Settings</span></a></li>
         </ul>
         

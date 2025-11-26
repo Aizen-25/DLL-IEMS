@@ -41,6 +41,18 @@
       <input id="filter_query" name="<%= (params['equipment_name'] ? 'equipment_name' : (params['name'] ? 'name' : (params['serial'] ? 'serial' : (params['deployed_date'] ? 'deployed_date' : (params['office'] ? 'office' : 'equipment_name')) ))) %>" value="<%= params['equipment_name'] || params['name'] || params['serial'] || params['deployed_date'] || params['office'] %>" placeholder="Type to search..." style="width:100%;padding:10px;border-radius:6px">
     </div>
 
+    <div style="min-width:200px">
+      <label>Category</label>
+      <select id="filter_category" name="category" style="width:200px;padding:10px;border-radius:6px">
+        <option value="">All</option>
+        <% if defined?(@categories) && @categories.any? %>
+          <% @categories.each do |c| %>
+            <option value="<%= c %>" <%= 'selected' if params['category'] == c %>><%= c %></option>
+          <% end %>
+        <% end %>
+      </select>
+    </div>
+
     <div style="display:flex;align-items:end;gap:8px">
       <a class="btn-secondary" href="/requests">Reset</a>
       <!-- Pending returns quick filter -->
@@ -125,6 +137,7 @@
             <td><%= r.quantity %></td>
             <td><%= r.checkout_date %></td>
             <td>
+              <div class="action-buttons">
               <% equipment_status = (r.equipment&.status.presence || r.status.presence || 'unknown') %>
               <% status_class = case equipment_status.to_s.downcase
                    when 'deployed' then 'status-deployed'
@@ -134,6 +147,7 @@
                    else ''
                  end %>
               <span class="status-pill <%= status_class %>"><%= equipment_status %></span>
+              </div>
             </td>
             <td>
               <% if r.status == 'pending_return' %>
@@ -141,7 +155,7 @@
               <% end %>
               <% if current_user && (current_user.semi_admin? || current_user.super_admin?) %>
                 <% if r.status != 'pending_return' && r.returned_at.nil? %>
-                  <form action="/requests/<%= r.id %>/return" method="post" style="display:inline"><button class="btn-secondary" type="submit">Mark Returned</button></form>
+                  <form action="/requests/<%= r.id %>/return" method="post" style="display:inline"><button class="btn-cta" type="submit"><span class="btn-icon">✓</span>Mark Returned</button></form>
                 <% end %>
               <% end %>
 
@@ -154,7 +168,7 @@
                     <button class="btn-secondary" type="submit" style="background:transparent;border:1px solid rgba(255,107,107,0.12);color:var(--danger)">Reject</button>
                   </form>
                 <% else %>
-                  <button class="btn-secondary" onclick="document.getElementById('status_form_<%= r.id %>').style.display='block'">Change Status</button>
+                  <button class="btn-cta" onclick="document.getElementById('status_form_<%= r.id %>').style.display='block'"><span class="btn-icon">⚙️</span>Change Status</button>
                 <% end %>
               <% end %>
               <div id="status_form_<%= r.id %>" style="display:none;margin-top:8px;padding:8px;background:rgba(255,255,255,0.02);border-radius:6px">
@@ -181,6 +195,18 @@
   <% else %>
     <div style="padding:18px;color:var(--muted)">No deployed equipment found.</div>
   <% end %>
+    <!-- Pagination controls -->
+    <% if defined?(@total_pages) && @total_pages.to_i > 1 %>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+        <div style="color:var(--muted)">Showing page <strong><%= @page %></strong> of <strong><%= @total_pages %></strong> — total: <strong><%= @total_loans %></strong> entries</div>
+        <div>
+          <% prev_page = @page - 1 %>
+          <% next_page = @page + 1 %>
+          <a href="<%= request.path %>?<%= URI.encode_www_form(Hash[params.to_a].merge('page' => [prev_page].max(1))) %>" class="page-link btn-secondary" style="margin-right:6px; <%= 'opacity:0.5;pointer-events:none' if @page <= 1 %>">Previous</a>
+          <a href="<%= request.path %>?<%= URI.encode_www_form(Hash[params.to_a].merge('page' => [next_page, @total_pages].min)) %>" class="page-link btn-secondary" style="<%= 'opacity:0.5;pointer-events:none' if @page >= @total_pages %>">Next</a>
+        </div>
+      </div>
+    <% end %>
   </div>
 </div>
 
@@ -221,6 +247,9 @@
       params.set(query.name, query.value || '');
       // include the selected field explicitly so server-side can also read if needed
       params.set('filter_field', field.value);
+      // include category filter
+      var cat = document.getElementById('filter_category') ? document.getElementById('filter_category').value : '';
+      params.set('category', cat || '');
 
       // abort previous pending request
       if(controller) controller.abort();
@@ -246,5 +275,31 @@
     form.addEventListener('submit', function(ev){ ev.preventDefault(); fetchResults(); });
     // initialize
     setInputName();
+    // intercept pagination links to use AJAX and keep the filter UX smooth
+    document.addEventListener('click', function(ev){
+      var target = ev.target;
+      if(target && target.classList && target.classList.contains('page-link')){
+        ev.preventDefault();
+        var href = target.getAttribute('href');
+        if(!href) return;
+        // abort previous pending request
+        if(controller) controller.abort();
+        controller = new AbortController();
+        fetch(href, { signal: controller.signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function(resp){ return resp.text(); })
+          .then(function(html){
+            try{
+              var parser = new DOMParser();
+              var doc = parser.parseFromString(html, 'text/html');
+              var newList = doc.getElementById('deployed_list');
+              if(newList){
+                document.getElementById('deployed_list').innerHTML = newList.innerHTML;
+                // update the URL in address bar without reloading
+                history.pushState({}, '', href);
+              }
+            } catch(e){ console.error('Failed to update deployed_list via pagination', e); }
+          }).catch(function(err){ if(err.name !== 'AbortError') console.error('Pagination fetch error', err); });
+      }
+    });
   });
 </script>

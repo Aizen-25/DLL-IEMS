@@ -1,0 +1,58 @@
+<div class="form-card">
+  <h1>Reports & Analytics</h1>
+  <div style="margin-top:8px; color:var(--muted)">Choose a report and apply filters (From / To dates or Year).</div>
+
+  <form id="reports_filter" method="get" action="/reports" style="display:flex;gap:8px;align-items:center;margin-top:12px">
+    <label style="font-size:0.9rem; color:var(--muted)">From</label>
+    <input type="date" name="from" value="<%= params['from'] %>">
+    <label style="font-size:0.9rem; color:var(--muted)">To</label>
+    <input type="date" name="to" value="<%= params['to'] %>">
+    <label style="font-size:0.9rem; color:var(--muted)">Year</label>
+    <input type="number" name="year" min="2000" max="<%= Date.today.year+1 %>" value="<%= params['year'] %>" style="width:110px">
+    <button class="btn-primary" type="submit">Apply</button>
+    <a class="btn-secondary" href="/reports" style="margin-left:6px">Reset</a>
+  </form>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px">
+    <div class="card">
+      <h3>Deployed by Category</h3>
+      <p class="muted">Counts of deployed units grouped by category</p>
+      <a href="/reports/deployed_by_category?from=<%= params['from'] %>&to=<%= params['to'] %>&year=<%= params['year'] %>">View Report</a>
+    </div>
+    <div class="card">
+      <h3>Top Assignees</h3>
+      <p class="muted">Users with the most assigned items</p>
+      <a href="/reports/top_assignees?from=<%= params['from'] %>&to=<%= params['to'] %>&year=<%= params['year'] %>">View Report</a>
+    </div>
+    <div class="card">
+      <h3>Average Deployment Duration</h3>
+      <p class="muted">Average time assets remain deployed before return</p>
+      <a href="/reports/avg_deployment_duration?from=<%= params['from'] %>&to=<%= params['to'] %>&year=<%= params['year'] %>">View Report</a>
+    </div>
+    <div class="card">
+      <h3>Warranty Expiring</h3>
+      <p class="muted">Equipment with warranty expiring within given window</p>
+      <a href="/reports/warranty_expiring?from=<%= params['from'] %>&to=<%= params['to'] %>&year=<%= params['year'] %>">View Report</a>
+    </div>
+    <div class="card">
+      <h3>Status Over Time</h3>
+      <p class="muted">Track status changes (maintenance, damaged, etc.)</p>
+      <a href="/reports/status_over_time?from=<%= params['from'] %>&to=<%= params['to'] %>&year=<%= params['year'] %>">View Report</a>
+    </div>
+    <div class="card">
+      <h3>Assets by Location</h3>
+      <p class="muted">Distribution of assets per office/location</p>
+      <a href="/reports/assets_by_location?from=<%= params['from'] %>&to=<%= params['to'] %>&year=<%= params['year'] %>">View Report</a>
+    </div>
+    <div class="card">
+      <h3>Interactive Analytics</h3>
+      <p class="muted">Three filterable graphs for quick insights</p>
+      <a href="/reports/analytics?from=<%= params['from'] %>&to=<%= params['to'] %>&year=<%= params['year'] %>">Open Analytics</a>
+    </div>
+    <div class="card">
+      <h3>Top Problematic Equipment</h3>
+      <p class="muted">Equipment most frequently reported as damaged or under repair</p>
+      <a href="/reports/top_problem_equipment?from=<%= params['from'] %>&to=<%= params['to'] %>&year=<%= params['year'] %>">View Report</a>
+    </div>
+  </div>
+</div>

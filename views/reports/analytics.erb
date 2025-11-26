@@ -1,0 +1,262 @@
+<div class="form-card">
+  <%= erb :'reports/_header' %>
+  <style>
+    /* Ensure canvases have an explicit height so Chart.js doesn't repeatedly resize */
+    /* Prevent horizontal overflow by allowing flex items to shrink (min-width:0) and capping widths */
+    .form-card { overflow-x: hidden; max-width:100%; margin:0 auto; }
+    .card { min-width: 0; overflow: hidden; max-width:100%; }
+    /* Highlight each chart card so legend and text visually belong together */
+    .card { border: 1px solid rgba(255,255,255,0.08); border-top: 4px solid var(--card-accent, rgba(54,162,235,0.06)); padding: 14px; border-radius: 10px; background: rgba(255,255,255,0.02); box-shadow: 0 6px 18px rgba(0,0,0,0.55); transition: all 180ms ease; }
+    .card > div { display: flex; align-items: center; gap: 12px; }
+    .card .title { margin-bottom:8px; font-weight:600; color: #cfeafc }
+    /* Hover/active card styling: slightly lighter background and stronger accent */
+    .card:hover { background: rgba(255,255,255,0.035); box-shadow: 0 10px 30px rgba(0,0,0,0.6); border-top-color: rgba(54,162,235,0.14); transform: translateY(-2px); }
+    .chart-legend { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px }
+    .chart-legend .item{ display:flex; gap:8px; align-items:center; color:#cfeafc; font-size:0.95rem }
+    .chart-legend .swatch{ width:14px; height:10px; border-radius:3px; display:inline-block; border:1px solid rgba(255,255,255,0.06) }
+    /* collapsed card hides chart contents to save vertical space */
+    .card.collapsed .chart-wrapper, .card.collapsed .chart-legend { display:none }
+    .card .card-toggle{ background:transparent;border:1px solid rgba(255,255,255,0.04);color:#cfeafc;padding:6px 8px;border-radius:6px;cursor:pointer }
+    .card .card-toggle:hover{ background:rgba(255,255,255,0.02) }
+    .charts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start }
+    @media (max-width:900px) { .charts-grid { grid-template-columns: 1fr } }
+    .chart-canvas { width: 100%; max-width: 100%; display: block; box-sizing: border-box; min-width: 0; }
+    .chart-wrapper { position: relative; overflow: hidden; }
+    .chart-wrapper .chart-canvas { position: absolute; left:0; top:0; width:100%; height:100%; }
+    /* Allow the chart container to wrap on small screens and reduce canvas height */
+    @media (max-width:900px) { .chart-canvas { height:180px } .card > div { flex-wrap: wrap } }
+  </style>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="display:flex;gap:8px;align-items:center">
+      <label style="color:var(--muted)">From</label>
+      <input type="date" id="r_from" value="<%= params['from'] %>">
+      <label style="color:var(--muted)">To</label>
+      <input type="date" id="r_to" value="<%= params['to'] %>">
+      <label style="color:var(--muted)">Year</label>
+      <input type="number" id="r_year" min="2000" max="<%= Date.today.year+1 %>" value="<%= params['year'] %>" style="width:110px">
+      <button id="r_apply" class="btn-primary" style="margin-left:6px">Apply</button>
+    </div>
+    <div>
+      <button class="btn-primary" onclick="window.print();">Print</button>
+      <a class="btn-secondary" href="/reports" style="margin-left:8px">Back</a>
+    </div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="card" style="--card-accent: rgba(54,162,235,0.14);">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+        <div style="display:flex;flex-direction:column">
+          <div class="title">Inventory: Equipment by Category</div>
+        </div>
+        <div>
+          <button class="card-toggle" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <div class="chart-wrapper" style="height:220px; max-height:420px;">
+        <canvas id="chart_equipment_dist" class="chart-canvas" aria-label="Inventory by category"></canvas>
+      </div>
+    </div>
+    <div class="card" style="--card-accent: rgba(75,123,192,0.14);">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+        <div style="display:flex;flex-direction:column">
+          <div class="title">Deployed by Category</div>
+          <div id="legend_cat" class="chart-legend" aria-hidden="true"></div>
+        </div>
+        <div>
+          <button class="card-toggle" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <div class="chart-wrapper" style="height:220px; max-height:420px; margin-top:8px;">
+        <canvas id="chart_cat" class="chart-canvas" aria-label="Deployed by category"></canvas>
+      </div>
+    </div>
+    <div class="card" style="--card-accent: rgba(54,162,235,0.10);">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+        <div style="display:flex;flex-direction:column">
+          <div class="title">Status Breakdown</div>
+          <div id="legend_status" class="chart-legend"></div>
+        </div>
+        <div>
+          <button class="card-toggle" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <div class="chart-wrapper" style="height:220px; max-height:420px; display:flex;align-items:center;justify-content:center;margin-top:8px;">
+        <canvas id="chart_status" class="chart-canvas" aria-label="Status breakdown" style="max-width:260px;max-height:220px;width:100%;height:100%;"></canvas>
+      </div>
+    </div>
+    <div class="card" style="--card-accent: rgba(88,200,115,0.12);">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+        <div style="display:flex;flex-direction:column">
+          <div class="title">Equipment Condition</div>
+          <div id="legend_condition" class="chart-legend"></div>
+        </div>
+        <div>
+          <button class="card-toggle" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <div class="chart-wrapper" style="height:220px; max-height:420px; display:flex;align-items:center;justify-content:center;margin-top:8px;">
+        <canvas id="chart_condition" class="chart-canvas" aria-label="Equipment condition" style="max-width:260px;max-height:220px;width:100%;height:100%;"></canvas>
+      </div>
+    </div>
+    <!-- Office Distribution chart removed per request -->
+    <div class="card" style="grid-column: 1 / -1">
+      <div class="title">Status Changes Over Time</div>
+      <div style="padding:32px;color:var(--muted)">Chart disabled for debugging.</div>
+    </div>
+    <div class="card" style="grid-column: 1 / -1; --card-accent: rgba(255,99,132,0.10);">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+        <div style="display:flex;flex-direction:column">
+          <div class="title">Problematic Brands (most often under repair / damaged)</div>
+        </div>
+        <div>
+          <button class="card-toggle" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <div class="chart-wrapper" style="height:300px; max-height:420px; margin-top:8px;">
+        <canvas id="chart_problem_brands" class="chart-canvas" aria-label="Problematic brands"></canvas>
+      </div>
+      <div id="legend_problem_brands" class="chart-legend" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/vendor/chart.min.js"></script>
+<script>
+  (function(){
+    // only initialize the Equipment-by-Category chart to verify layout
+    try{
+      var equipByCat = <%= (@equipment_by_category || {}).to_json %>;
+      var labels = Object.keys(equipByCat || {});
+      var data = labels.map(function(k){ return equipByCat[k] || 0 });
+      var ctx = document.getElementById('chart_equipment_dist');
+      if(ctx && ctx.getContext){
+        var chart = new Chart(ctx.getContext('2d'), {
+          type: 'bar',
+          data: { labels: labels, datasets: [{ data: data, backgroundColor: 'rgba(54,162,235,0.95)' }] },
+          options: { maintainAspectRatio: false, responsive: true, plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ color:'#cfeafc' } }, y:{ beginAtZero:true } } }
+        });
+      }
+    } catch(e){ console.error('init equipment chart failed', e) }
+
+    // initialize Deployed-by-Category chart
+    try{
+      var deployedByCategory = <%= (@deployed_by_category || {}).to_json %>;
+      var catLabels = Object.keys(deployedByCategory || {});
+      var catData = catLabels.map(function(k){ return deployedByCategory[k] || 0 });
+      var ctxCat = document.getElementById('chart_cat');
+      if(ctxCat && ctxCat.getContext){
+        new Chart(ctxCat.getContext('2d'), {
+          type: 'bar',
+          data: { labels: catLabels, datasets: [{ data: catData, backgroundColor: 'rgba(75,123,192,0.95)' }] },
+          options: { maintainAspectRatio: false, responsive: true, plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ color:'#cfeafc' } }, y:{ beginAtZero:true } } }
+        });
+      }
+    } catch(e){ console.error('init deployed chart failed', e) }
+    // initialize Status Breakdown donut chart
+    try{
+      var statusCounts = <%= (@request_status_counts || {}).to_json %>;
+      var statusLabels = Object.keys(statusCounts || {});
+      var statusData = statusLabels.map(function(k){ return statusCounts[k] || 0 });
+      var statusCtx = document.getElementById('chart_status');
+      if(statusCtx && statusCtx.getContext){
+        new Chart(statusCtx.getContext('2d'), {
+          type: 'doughnut',
+          data: { labels: statusLabels, datasets: [{ data: statusData, backgroundColor: [ 'rgba(54,162,235,0.9)','rgba(255,205,86,0.9)','rgba(255,99,132,0.9)','rgba(75,192,192,0.9)','rgba(153,102,255,0.9)' ] }] },
+          options: { maintainAspectRatio: false, responsive: true, plugins:{ legend:{ position:'bottom', labels:{ color:'#cfeafc' } } } }
+        });
+      }
+    } catch(e){ console.error('init status chart failed', e) }
+    // initialize Equipment Condition donut chart
+    try{
+      // prefer explicit labels in desired order
+      var desiredCond = ['working','under repair','damaged'];
+      var eqCounts = <%= (@equipment_status_counts || {}).to_json %> || {};
+      // normalize keys to lowercase strings and map desired labels
+      var condMap = {};
+      Object.keys(eqCounts || {}).forEach(function(k){ condMap[(k||'').toString().toLowerCase()] = eqCounts[k]; });
+      var condLabels = desiredCond.slice();
+      // include any other statuses after desired ones
+      Object.keys(condMap).forEach(function(k){ if(condLabels.indexOf(k) === -1) condLabels.push(k); });
+      var condData = condLabels.map(function(k){ return condMap[k] || 0 });
+      var condCtx = document.getElementById('chart_condition');
+      if(condCtx && condCtx.getContext){
+        new Chart(condCtx.getContext('2d'), {
+          type: 'doughnut',
+          data: { labels: condLabels.map(function(l){ return l.charAt(0).toUpperCase() + l.slice(1); }), datasets: [{ data: condData, backgroundColor: [ 'rgba(88,200,115,0.95)', 'rgba(255,159,64,0.95)', 'rgba(255,99,132,0.95)', 'rgba(201,203,207,0.6)' ] }] },
+          options: { maintainAspectRatio: false, responsive: true, plugins:{ legend:{ position:'bottom', labels:{ color:'#cfeafc' } } } }
+        });
+      }
+    } catch(e){ console.error('init condition chart failed', e) }
+    // helper to render a simple DOM legend under a chart
+    function renderDomLegend(targetId, labels, colors, keys, linkBase){
+      try{
+        var el = document.getElementById(targetId);
+        if(!el) return;
+        el.innerHTML = '';
+        labels.forEach(function(label, idx){
+          var color = (colors && colors[idx]) ? colors[idx] : 'rgba(200,200,200,0.6)';
+          var item = document.createElement('div'); item.className = 'item';
+          var sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = color;
+          var txt = document.createElement('span'); txt.textContent = label; txt.style.color = '#cfeafc';
+          item.appendChild(sw); item.appendChild(txt);
+          // clickable legend: if linkBase provided, use keys[idx] (fallback to label) to build URL
+          if(linkBase){
+            var key = (keys && keys[idx]) ? keys[idx] : label;
+            item.style.cursor = 'pointer';
+            item.title = 'Click to filter: ' + key;
+            item.addEventListener('click', function(){
+              try{ window.location.href = linkBase + encodeURIComponent(key); } catch(e) { console.warn('redirect failed', e); }
+            });
+          }
+          el.appendChild(item);
+        });
+      } catch(e) { console.warn('renderDomLegend failed', e); }
+    }
+
+    // populate DOM legends for charts and wire interactivity
+    try{
+      if(typeof catLabels !== 'undefined'){
+        var catColors = catLabels.map(function(_,i){ return 'rgba(75,123,192,' + (0.9 - ((i%6)*0.08)) + ')'; });
+        renderDomLegend('legend_cat', catLabels, catColors, catLabels, '/requests?category=');
+      }
+      if(typeof statusLabels !== 'undefined'){
+        var statusColors = [ 'rgba(54,162,235,0.9)','rgba(255,205,86,0.9)','rgba(255,99,132,0.9)','rgba(75,192,192,0.9)','rgba(153,102,255,0.9)' ];
+        renderDomLegend('legend_status', statusLabels, statusColors, statusLabels, '/requests?filter=');
+      }
+      if(typeof condLabels !== 'undefined'){
+        var condColors = [ 'rgba(88,200,115,0.95)', 'rgba(255,159,64,0.95)', 'rgba(255,99,132,0.95)', 'rgba(201,203,207,0.6)' ];
+        renderDomLegend('legend_condition', condLabels.map(function(l){ return l.charAt(0).toUpperCase() + l.slice(1); }), condColors, condLabels, '/equipments?status=');
+      }
+
+      // collapse/expand handlers for card toggles
+      document.querySelectorAll('.card .card-toggle').forEach(function(btn){
+        btn.addEventListener('click', function(e){
+          var card = btn.closest('.card');
+          if(!card) return;
+          var isCollapsed = card.classList.toggle('collapsed');
+          btn.setAttribute('aria-expanded', !isCollapsed);
+          btn.textContent = isCollapsed ? '▸' : '▾';
+        });
+      });
+    } catch(e){ console.warn('legend/collapse init failed', e); }
+    // Problematic Brands chart
+    try{
+      var pb = <%= (@problem_brands || {}).to_json %> || {};
+      var pbLabels = Object.keys(pb || {});
+      var pbData = pbLabels.map(function(k){ return pb[k] || 0 });
+      var pbCtx = document.getElementById('chart_problem_brands');
+      if(pbCtx && pbCtx.getContext){
+        new Chart(pbCtx.getContext('2d'), {
+          type: 'bar',
+          data: { labels: pbLabels, datasets: [{ data: pbData, backgroundColor: 'rgba(255,99,132,0.95)' }] },
+          options: { maintainAspectRatio: false, responsive: true, plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ color:'#cfeafc' } }, y:{ beginAtZero:true, ticks:{ color:'#cfeafc' } } } }
+        });
+      }
+      // populate legend (top brands)
+      try{
+        var pbColors = pbLabels.map(function(_,i){ return 'rgba(255,99,132,' + (0.85 - ((i%6)*0.06)) + ')'; });
+        renderDomLegend('legend_problem_brands', pbLabels.slice(0,10), pbColors.slice(0,10), pbLabels.slice(0,10), '/requests?brand=');
+      } catch(e){}
+    } catch(e){ console.error('init problem brands chart failed', e) }
+  })();
+</script>

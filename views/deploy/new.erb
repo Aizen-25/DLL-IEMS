@@ -17,7 +17,8 @@
       <label class="required">Equipment (choose item)</label>
       <select id="deploy_equipment" name="equipment_id">
         <option value="">-- Select equipment --</option>
-        <% @equipments.each do |e| %>
+        <% (@equipments || []).each do |e| %>
+          <% next if (e.quantity || 0) <= 0 %>
           <option data-category="<%= e.category %>" value="<%= e.id %>" data-qty="<%= e.quantity || 0 %>" data-unitprice="<%= e.purchase_price || 0 %>"><%= e.name %> (<%= e.model %>) - available: <%= e.quantity || 0 %></option>
         <% end %>
       </select>
