@@ -6,13 +6,8 @@ gem 'sinatra'
 gem 'sinatra-activerecord'
 gem 'rake'
 gem 'activerecord', '~> 7.0'
-group :development, :test do
-	gem 'sqlite3', '~> 1.4'
-end
-
-group :production do
-	gem 'pg'
-end
+## Use PostgreSQL in all environments. If you still need sqlite3 locally, install it separately.
+gem 'pg'
 gem 'puma'
 gem 'sinatra-contrib'
 gem 'csv'

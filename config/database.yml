@@ -1,32 +1,28 @@
 default: &default
+  adapter: postgresql
+  encoding: unicode
   pool: <%= ENV.fetch('DB_POOL', 5) %>
+  host: <%= ENV.fetch('DB_HOST', 'localhost') %>
+  port: <%= ENV.fetch('DB_PORT', 5432) %>
+  username: <%= ENV['DB_USER'] %>
+  password: <%= ENV['DB_PASS'] %>
 
 development:
   <<: *default
-  adapter: sqlite3
-  database: db/development.sqlite3
+  database: <%= ENV.fetch('DB_NAME', 'inventory_development') %>
 
 test:
   <<: *default
-  adapter: sqlite3
-  database: db/test.sqlite3
+  database: <%= ENV.fetch('DB_NAME_TEST', 'inventory_test') %>
 
 production:
   <<: *default
   <% if ENV['DATABASE_URL'] %>
   url: <%= ENV['DATABASE_URL'] %>
   <% else %>
-  adapter: sqlite3
-  database: db/production.sqlite3
+  database: <%= ENV.fetch('DB_NAME_PRODUCTION', 'inventory_production') %>
+  username: <%= ENV['DB_USER_PRODUCTION'] || ENV['DB_USER'] %>
+  password: <%= ENV['DB_PASS_PRODUCTION'] || ENV['DB_PASS'] %>
+  host: <%= ENV.fetch('DB_HOST_PRODUCTION', ENV.fetch('DB_HOST', 'localhost')) %>
+  port: <%= ENV.fetch('DB_PORT_PRODUCTION', ENV.fetch('DB_PORT', 5432)) %>
   <% end %>
-development:
-  adapter: sqlite3
-  database: db/development.sqlite3
-
-test:
-  adapter: sqlite3
-  database: db/test.sqlite3
-
-production:
-  adapter: sqlite3
-  database: db/production.sqlite3
